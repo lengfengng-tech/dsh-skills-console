@@ -1,0 +1,70 @@
+// scripts/host-smoke.mjs — exercise the DSH adapter against a sandboxed
+// DSH_HOME (real machine data is never touched) with a mocked cordis ctx.
+
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import fsp from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
+const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'dsh-skills-host-'))
+process.env.DSH_HOME = path.join(tmp, 'dsh-home')
+
+const { SkillsManager } = await import('../dsh/manager.js')
+
+// sandbox home conventions
+const home = path.join(tmp, 'home')
+fs.mkdirSync(path.join(home, '.agents', 'skills'), { recursive: true })
+function makeSkill(root, name, fm) {
+  const dir = path.join(root, name)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\n' + Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n') + '\n---\n\n# ' + name + '\n')
+}
+makeSkill(path.join(home, '.agents', 'skills'), 'alpha', { name: 'alpha', description: 'first' })
+makeSkill(path.join(home, '.agents', 'skills'), 'beta', { name: 'beta', description: 'second' })
+
+const ctx = { get: () => undefined, sessions: { list: () => [] } }
+const manager = new SkillsManager(ctx, { home, projectRoot: null })
+
+await manager.refresh()
+let view = await manager.view()
+assert.equal(view.ok, true)
+const names = view.skills.map((s) => s.name).sort()
+assert.deepEqual(names, ['alpha', 'beta'])
+assert.ok(view.skills.every((s) => s.installedBy === 'foreign'), 'census marks foreign')
+
+// disable/enable round trip through the manager
+const rootDir = path.join(home, '.agents', 'skills')
+await manager.opDisable('alpha', path.join(rootDir, 'alpha'))
+view = await manager.view()
+const alpha = view.skills.find((s) => s.name === 'alpha')
+assert.equal(alpha.disabled, true)
+assert.ok(fs.existsSync(path.join(rootDir + '-disabled', 'alpha')))
+
+// undo re-enables
+await manager.opUndo()
+view = await manager.view()
+assert.equal(view.skills.find((s) => s.name === 'alpha').disabled, false)
+
+// remove with confirm + backup, then rollback via logged undo
+await manager.opRemove('beta', path.join(rootDir, 'beta'), { confirmed: true })
+assert.ok(!fs.existsSync(path.join(rootDir, 'beta')))
+const backups = await manager.backups()
+assert.ok(backups.backups.some((b) => b.skill === 'beta'), 'remove took a backup')
+
+// health report
+const health = await manager.health()
+assert.equal(health.ok, true)
+assert.equal(health.report.total, 1)
+
+// logs recorded
+const logs = manager.logs(50)
+assert.ok(logs.logs.some((l) => l.op === 'disable'))
+assert.ok(logs.logs.some((l) => l.op === 'remove'))
+
+// state persisted under DSH_HOME
+assert.ok(fs.existsSync(path.join(process.env.DSH_HOME, 'dsh-skills', 'state.json')))
+
+manager.dispose()
+await fsp.rm(tmp, { recursive: true, force: true })
+console.log('host smoke: all assertions passed')

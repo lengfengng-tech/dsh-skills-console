@@ -1,0 +1,55 @@
+{
+  "name": "dsh-skills-butler",
+  "version": "0.1.0",
+  "description": "Skill butler for DeepSeek Harness settings: discover, install, manage, and health-check agent skills across ~/.agents/skills, ~/.claude/skills, and project scopes — built on the npx skills ecosystem",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dsh/index.js",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./client": "./client/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "core",
+    "dsh",
+    "client/client.js",
+    "locale",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "agent-skills",
+    "skills",
+    "claude-skills",
+    "agents-md",
+    "ai-agent"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node scripts/core-test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": false,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  }
+}
