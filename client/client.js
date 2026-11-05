@@ -268,6 +268,21 @@ window.__ModuleLoader__.load({
       } catch (e) { /* diagnostics must never break the panel */ }
     }
     diag('factory')
+    // Capture every page-level error channel: the slot renderer logs
+    // "slot entry crashed in ..." via console.error before blanking an entry.
+    try {
+      window.addEventListener('error', (e) => {
+        diag('window-error', (e.message || 'err') + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno)
+      })
+      window.addEventListener('unhandledrejection', (e) => {
+        diag('unhandled-rejection', (e.reason && e.reason.message) || String(e.reason))
+      })
+      const origError = console.error.bind(console)
+      console.error = (...args) => {
+        try { diag('console-error', args.map((a) => (a && a.message) || String(a)).join(' | ').slice(0, 400)) } catch (e) { /* noop */ }
+        origError(...args)
+      }
+    } catch (e) { /* diagnostics must never break the panel */ }
 
     async function api(path, options = {}) {
       const response = await fetch(API + path, {
@@ -902,7 +917,10 @@ window.__ModuleLoader__.load({
           label: () => {
             try { return t('nav') } catch { return fallbackT('nav') }
           },
-          inject: () => ({})
+          inject: () => {
+            diag('inject-called')
+            return {}
+          }
         }, SafeSection))
       }
     }
