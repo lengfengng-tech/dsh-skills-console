@@ -255,6 +255,20 @@ window.__ModuleLoader__.load({
 
     const fallbackT = (key) => (DICT.zh && DICT.zh[key]) || key
 
+    // Remote diagnostics: the harness page is unreachable from the agent, so
+    // each lifecycle stage writes a breadcrumb into localStorage; the leveldb
+    // backing store is read afterwards to see exactly how far startup got.
+    const DIAG_KEY = 'skb.diag.v1'
+    function diag(stage, extra) {
+      try {
+        const raw = window.localStorage.getItem(DIAG_KEY)
+        const list = raw ? JSON.parse(raw) : []
+        list.push({ stage, at: Date.now(), extra: extra === undefined ? null : String(extra).slice(0, 300) })
+        window.localStorage.setItem(DIAG_KEY, JSON.stringify(list.slice(-50)))
+      } catch (e) { /* diagnostics must never break the panel */ }
+    }
+    diag('factory')
+
     async function api(path, options = {}) {
       const response = await fetch(API + path, {
         method: options.body === undefined ? 'GET' : 'POST',
@@ -419,9 +433,11 @@ window.__ModuleLoader__.load({
       }
       componentDidCatch(error, info) {
         try { console.error('[dsh-skills-butler] section crashed:', error, info) } catch (e) { /* noop */ }
+        diag('crash', (error && error.message) || error)
       }
       render() {
         if (this.state.error) {
+          diag('boundary-render', (this.state.error && this.state.error.message) || this.state.error)
           return h('div', { className: 'skb-root' },
             h('style', null, CSS),
             h('div', { className: 'skb-notice skb-notice--error', role: 'alert' },
@@ -433,7 +449,8 @@ window.__ModuleLoader__.load({
 
     /** Main settings section. `t` arrives from the locale prop machinery. */
     function SkillsSection(props) {
-      const t = props.t || fallbackT
+      diag('render', 'props.t=' + typeof props.t)
+      const t = (typeof props.t === 'function' && props.t) || fallbackT
       const [view, setView] = useState(null)            // { roots, skills, env, lockfiles, paths }
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState(null)
@@ -457,10 +474,12 @@ window.__ModuleLoader__.load({
       const load = useCallback(async () => {
         try {
           const data = await api('/view')
+          diag('view-ok', 'skills=' + (data.skills ? data.skills.length : '?'))
           setView(data)
           setError(null)
           return data
         } catch (e) {
+          diag('view-error', (e && e.message) || e)
           setError(e.message)
           return null
         }
@@ -870,6 +889,7 @@ window.__ModuleLoader__.load({
         if (ctx.locale && typeof ctx.locale.bind === 'function') t = ctx.locale.bind(NS)
       } catch { /* locale unbound: fall back to zh */ }
       const slots = ctx && ctx.slots
+      diag('apply', 'slots=' + typeof (slots && slots.inject) + ' locale=' + typeof (ctx && ctx.locale && ctx.locale.bind))
       if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
         // `t` comes from the locale prop machinery (registration `locale: NS`);
         // injecting it manually too conflicts and blanks the section.
