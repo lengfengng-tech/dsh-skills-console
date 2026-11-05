@@ -464,6 +464,32 @@ window.__ModuleLoader__.load({
 
     /** Main settings section. `t` arrives from the locale prop machinery. */
     function SkillsSection(props) {
+      const rootRefCb = useCallback((el) => {
+        if (!el) return
+        try {
+          const rect = el.getBoundingClientRect()
+          let ancestor = el.parentElement
+          let depth = 0
+          let disconnectedAt = null
+          while (ancestor) { depth += 1; ancestor = ancestor.parentElement }
+          if (!el.isConnected) {
+            // walk the fragment to find where the chain breaks
+            let node = el
+            let prev = el
+            while (node) { prev = node; node = node.parentElement }
+            disconnectedAt = prev.tagName + '#' + (prev.id || '') + '.' + (prev.className || '').toString().slice(0, 40)
+          }
+          diag('ref', JSON.stringify({
+            connected: el.isConnected,
+            depth,
+            rect: [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)],
+            ownerUrl: el.ownerDocument === document ? 'same' : 'DIFFERENT:' + String(el.ownerDocument.URL).slice(0, 60),
+            sameDoc: el.ownerDocument === document,
+            breakAt: disconnectedAt,
+            parentCls: el.parentElement ? el.parentElement.className.toString().slice(0, 60) : null
+          }))
+        } catch (e) { diag('ref-error', (e && e.message) || e) }
+      }, [])
       diag('render', 'props.t=' + typeof props.t)
       const t = (typeof props.t === 'function' && props.t) || fallbackT
       const [view, setView] = useState(null)            // { roots, skills, env, lockfiles, paths }
@@ -720,7 +746,7 @@ window.__ModuleLoader__.load({
       }, [mutate])
 
       if (!view) {
-        return h('div', { className: 'skb-root' },
+        return h('div', { className: 'skb-root', ref: rootRefCb },
           h('style', { 'data-skb-style': '1' }, CSS),
           h('h1', { className: 'skb-title' }, t('panel.title')),
           h('div', { className: 'skb-empty' }, error ? t('list.error') + '：' + error : t('list.loading')))
@@ -728,7 +754,7 @@ window.__ModuleLoader__.load({
 
       const cliDown = view.env && view.env.ok === false
 
-      return h('div', { className: 'skb-root' + (busy ? ' skb-mutating' : '') },
+      return h('div', { className: 'skb-root' + (busy ? ' skb-mutating' : ''), ref: rootRefCb },
         h('style', null, CSS),
 
         h('div', { className: 'skb-header' },
