@@ -509,20 +509,33 @@ window.__ModuleLoader__.load({
         const t = setTimeout(() => {
           try {
             const el = document.querySelector('.skb-root')
-            const list = document.querySelector('.skb-list')
-            if (!el) { diag('dom', 'MISSING .skb-root'); return }
-            const cs = getComputedStyle(el)
-            const rect = el.getBoundingClientRect()
+            const skbAll = document.querySelectorAll('[class*="skb-"]')
+            const styleTag = document.querySelector('[data-skb-style]')
+            // walk shadow roots from the body for skb elements
+            let shadowSkb = 0
+            const walk = (root) => {
+              try {
+                if (root.querySelectorAll) shadowSkb += root.querySelectorAll('[class*="skb-"]').length
+                const all = root.querySelectorAll ? root.querySelectorAll('*') : []
+                for (const node of all) {
+                  if (node.shadowRoot) walk(node.shadowRoot)
+                }
+              } catch (e) { /* noop */ }
+            }
+            walk(document)
             diag('dom', JSON.stringify({
-              h: el.offsetHeight, w: el.offsetWidth, kids: el.childElementCount,
-              rect: [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)],
-              display: cs.display, vis: cs.visibility, opacity: cs.opacity,
-              color: cs.color, bg: cs.backgroundColor,
-              fontSize: cs.fontSize,
-              listH: list ? list.offsetHeight : -1,
-              htmlLen: el.innerHTML.length,
-              parent: el.parentElement && (el.parentElement.className || el.parentElement.tagName).toString().slice(0, 80),
-              parentH: el.parentElement ? el.parentElement.offsetHeight : -1
+              rootFound: !!el,
+              skbInDocument: skbAll.length,
+              skbInShadow: shadowSkb,
+              styleTag: !!styleTag,
+              frames: window.frames.length,
+              topIsSelf: window.top === window,
+              bodyHtmlLen: document.body ? document.body.innerHTML.length : -1,
+              iframes: Array.from(document.querySelectorAll('iframe')).map((f) => (f.src || 'about:blank').slice(0, 60)),
+              optionsGuess: (() => {
+                const cand = document.querySelector('[class*="options"]')
+                return cand ? { cls: cand.className.slice(0, 40), kids: cand.childElementCount, html: cand.innerHTML.length } : null
+              })()
             }))
           } catch (e) { diag('dom-error', (e && e.message) || e) }
         }, 600)
@@ -708,7 +721,7 @@ window.__ModuleLoader__.load({
 
       if (!view) {
         return h('div', { className: 'skb-root' },
-          h('style', null, CSS),
+          h('style', { 'data-skb-style': '1' }, CSS),
           h('h1', { className: 'skb-title' }, t('panel.title')),
           h('div', { className: 'skb-empty' }, error ? t('list.error') + '：' + error : t('list.loading')))
       }
