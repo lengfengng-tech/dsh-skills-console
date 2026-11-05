@@ -502,6 +502,33 @@ window.__ModuleLoader__.load({
 
       useEffect(() => { void load() }, [load])
 
+      // DOM probe: after data arrives, report the rendered box so visibility
+      // bugs can be diagnosed offline from the leveldb breadcrumbs.
+      useEffect(() => {
+        if (!view) return
+        const t = setTimeout(() => {
+          try {
+            const el = document.querySelector('.skb-root')
+            const list = document.querySelector('.skb-list')
+            if (!el) { diag('dom', 'MISSING .skb-root'); return }
+            const cs = getComputedStyle(el)
+            const rect = el.getBoundingClientRect()
+            diag('dom', JSON.stringify({
+              h: el.offsetHeight, w: el.offsetWidth, kids: el.childElementCount,
+              rect: [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)],
+              display: cs.display, vis: cs.visibility, opacity: cs.opacity,
+              color: cs.color, bg: cs.backgroundColor,
+              fontSize: cs.fontSize,
+              listH: list ? list.offsetHeight : -1,
+              htmlLen: el.innerHTML.length,
+              parent: el.parentElement && (el.parentElement.className || el.parentElement.tagName).toString().slice(0, 80),
+              parentH: el.parentElement ? el.parentElement.offsetHeight : -1
+            }))
+          } catch (e) { diag('dom-error', (e && e.message) || e) }
+        }, 600)
+        return () => clearTimeout(t)
+      }, [view])
+
       // lazy detail load
       useEffect(() => {
         if (!selected) { setDetail(null); return }
