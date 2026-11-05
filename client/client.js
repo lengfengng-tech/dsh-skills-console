@@ -408,7 +408,30 @@ window.__ModuleLoader__.load({
       })
     }
 
-    /** Main settings section. `t` is the locale-bound translator. */
+    /** Error boundary: a render crash must show diagnostics, not a blank page. */
+    class SectionBoundary extends React.Component {
+      constructor(props) {
+        super(props)
+        this.state = { error: null }
+      }
+      static getDerivedStateFromError(error) {
+        return { error }
+      }
+      componentDidCatch(error, info) {
+        try { console.error('[dsh-skills-butler] section crashed:', error, info) } catch (e) { /* noop */ }
+      }
+      render() {
+        if (this.state.error) {
+          return h('div', { className: 'skb-root' },
+            h('style', null, CSS),
+            h('div', { className: 'skb-notice skb-notice--error', role: 'alert' },
+              'Skills butler crashed: ' + String((this.state.error && this.state.error.message) || this.state.error)))
+        }
+        return this.props.children
+      }
+    }
+
+    /** Main settings section. `t` arrives from the locale prop machinery. */
     function SkillsSection(props) {
       const t = props.t || fallbackT
       const [view, setView] = useState(null)            // { roots, skills, env, lockfiles, paths }
@@ -848,6 +871,9 @@ window.__ModuleLoader__.load({
       } catch { /* locale unbound: fall back to zh */ }
       const slots = ctx && ctx.slots
       if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
+        // `t` comes from the locale prop machinery (registration `locale: NS`);
+        // injecting it manually too conflicts and blanks the section.
+        const SafeSection = (props) => h(SectionBoundary, null, h(SkillsSection, props))
         slots.inject('settings.section', () => slots.register({
           name: 'settings.section',
           id: SECTION_ID,
@@ -856,8 +882,8 @@ window.__ModuleLoader__.load({
           label: () => {
             try { return t('nav') } catch { return fallbackT('nav') }
           },
-          inject: () => ({ t })
-        }, SkillsSection))
+          inject: () => ({})
+        }, SafeSection))
       }
     }
 
