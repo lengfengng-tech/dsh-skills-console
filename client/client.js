@@ -836,13 +836,95 @@ window.__ModuleLoader__.load({
       }, [mutate])
 
       if (!view) {
-        return h('div', { ref: rootRefCb }, 'SKILLS loading' + (error ? ' ERR ' + error : ''))
+        return h('div', { className: 'skb-root', ref: rootRefCb },
+          h('h1', { className: 'skb-title' }, t('panel.title')),
+          h('div', { className: 'skb-empty' }, error ? t('list.error') + '：' + error : t('list.loading')))
       }
 
       const cliDown = view.env && view.env.ok === false
 
-      return h('div', { ref: rootRefCb },
-        'SKILLS:' + view.skills.length + ' filtered:' + filtered.length)
+      return h('div', { className: 'skb-root' + (busy ? ' skb-mutating' : ''), ref: rootRefCb },
+
+        h('div', { className: 'skb-header' },
+          h('div', null,
+            h('h1', { className: 'skb-title' }, t('panel.title')),
+            h('p', { className: 'skb-subtitle' }, t('panel.subtitle'))),
+          h('div', { className: 'skb-actions' },
+            h('button', { type: 'button', className: 'skb-btn', onClick: () => void load() }, t('action.refresh')),
+            h('button', { type: 'button', className: 'skb-btn', onClick: runHealth }, t('action.health')),
+            h('button', { type: 'button', className: 'skb-btn', onClick: openLogs }, t('action.logs')),
+            h('button', { type: 'button', className: 'skb-btn', onClick: () => void openRoots() }, t('action.roots')),
+            h('button', { type: 'button', className: 'skb-btn', onClick: undo }, t('action.undo')),
+            h('div', { className: 'skb-relative' },
+              h('button', {
+                type: 'button', className: 'skb-btn skb-btn--primary', onClick: () => setMenuOpen((v) => !v),
+                'aria-haspopup': 'menu', 'aria-expanded': menuOpen ? 'true' : 'false'
+              }, t('action.add') + ' ▾'),
+              menuOpen ? h('div', { className: 'skb-menu', role: 'menu' },
+                h('button', { type: 'button', onClick: () => { setMenuOpen(false); setModal('market') } }, t('add.market')),
+                h('button', { type: 'button', onClick: () => { setMenuOpen(false); setLocalForm({ target: '', name: '' }); setModal('local') } }, t('add.local')),
+                h('button', { type: 'button', onClick: () => { setMenuOpen(false); void addRoot() } }, t('add.root'))
+              ) : null))),
+
+        cliDown ? h('div', { className: 'skb-notice skb-notice--warn' }, t('cli.unavailable').replace('{{reason}}', view.env.reason || 'unknown')) : null,
+        notice ? h('div', { className: 'skb-notice skb-notice--' + notice.kind, role: 'status' }, notice.text) : null,
+        error ? h('div', { className: 'skb-notice skb-notice--error' }, error) : null,
+
+        h('div', { className: 'skb-toolbar' },
+          h('div', { className: 'skb-tabs', role: 'tablist' },
+            [['all', 'tab.all'], ['global', 'tab.global'], ['project', 'tab.project'], ['disabled', 'tab.disabled'], ['warn', 'tab.warn'], ['unloaded', 'tab.unloaded']].map(([key, label]) =>
+              h('button', {
+                key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false',
+                className: 'skb-tab' + (tab === key ? ' skb-tab--active' : ''),
+                onClick: () => setTab(key)
+              }, t(label), h('span', { className: 'skb-count' }, counts[key] || 0)))),
+          h('select', { className: 'skb-select', value: agentFilter, onChange: (e) => setAgentFilter(e.target.value), 'aria-label': t('filter.agent') },
+            h('option', { value: 'all' }, t('filter.agent') + ': ' + t('filter.agent.all')),
+            agents.map((a) => h('option', { key: a, value: a }, a))),
+          h('select', { className: 'skb-select', value: originFilter, onChange: (e) => setOriginFilter(e.target.value), 'aria-label': t('filter.origin') },
+            h('option', { value: 'all' }, t('filter.origin') + ': ' + t('filter.origin.all')),
+            origins.map((o) => h('option', { key: o, value: o }, t('origin.' + o)))),
+          h('input', {
+            className: 'skb-input skb-search', value: search, onChange: (e) => setSearch(e.target.value),
+            placeholder: t('search.placeholder'), type: 'search'
+          })),
+
+        // rows are div[role=button]: a real <button> may not contain the row's
+        // switch <button> (invalid nesting; HTML parsers split nested buttons
+        // and desync React from the DOM).
+        h('div', { className: 'skb-list', role: 'list' },
+          filtered.length === 0
+            ? h('div', { className: 'skb-empty' }, t('list.empty'))
+            : filtered.map((skill) => h('div', {
+              key: skill.dir, role: 'listitem'
+            },
+              h('div', {
+                className: 'skb-row'
+                  + (selected && selected.dir === skill.dir ? ' skb-row--active' : '')
+                  + (skill.disabled ? ' skb-row--disabled' : ''),
+                role: 'button', tabIndex: 0,
+                'aria-label': skill.name,
+                onClick: () => setSelected({ name: skill.name, dir: skill.dir }),
+                onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected({ name: skill.name, dir: skill.dir }) } }
+              },
+                h('span', { className: 'skb-cube' }, h(CubeIcon)),
+                h('span', { className: 'skb-row-main' },
+                  h('span', { className: 'skb-row-name' },
+                    skill.name,
+                    skill.pinned ? h('span', { className: 'skb-badge' }, '📌') : null,
+                    skill.installedBy === 'foreign' ? h('span', { className: 'skb-badge skb-badge--foreign' }, t('foreign.badge')) : null,
+                    skill.disabled ? h('span', { className: 'skb-badge' }, t('disabled.badge')) : null,
+                    skill.shadowed ? h('span', { className: 'skb-badge skb-badge--warn' }, t('shadowed.badge')) : null,
+                    skill.issues && skill.issues.length > 0 ? h('span', { className: 'skb-badge skb-badge--error' }, '⚠ ' + skill.issues.length) : null),
+                  h('span', { className: 'skb-row-desc' }, skill.description || skill.dir),
+                  h('span', { className: 'skb-badges' },
+                    h('span', { className: 'skb-badge' }, t('scope.' + skill.scope)),
+                    h('span', { className: 'skb-badge' }, skill.agent),
+                    h('span', { className: 'skb-badge' }, t('origin.' + skill.origin)))),
+              h('span', { className: 'skb-row-side' },
+                h('span', { className: 'skb-loaded' + (skill.loaded ? ' skb-loaded--yes' : '') }, skill.loaded ? '● ' + t('loaded.yes') : '○ ' + t('loaded.no')),
+                h(Switch, { on: !skill.disabled, label: skill.disabled ? t('switch.enable') : t('switch.disable'), onChange: () => void toggleSkill(skill) }))))))
+      )
     }
 
     /** Decorative cube glyph for the sidebar panel row. */
