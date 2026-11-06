@@ -9,7 +9,10 @@
  */
 window.__ModuleLoader__.load({
   id: 'dsh-skills-butler',
-  factory(require) {
+  factory: (require) => {
+    "use strict";
+    var module = { exports: {} };
+    var exports = module.exports;
     const React = require('react')
     const h = React.createElement
     const { useCallback, useEffect, useMemo, useRef, useState } = React
@@ -254,6 +257,7 @@ window.__ModuleLoader__.load({
     }
 
     const fallbackT = (key) => (DICT.zh && DICT.zh[key]) || key
+    let currentT = fallbackT
 
     // Remote diagnostics: the harness page is unreachable from the agent, so
     // each lifecycle stage writes a breadcrumb into localStorage; the leveldb
@@ -437,6 +441,27 @@ window.__ModuleLoader__.load({
       })
     }
 
+
+    // Styles live in document.head, injected once at apply time — never inside
+    // the component tree (the proven dsh-mcp-tools pattern).
+    var stylesInjected = false
+    function injectStyles() {
+      if (stylesInjected) return
+      try {
+        if (typeof document === 'undefined' || !document.head) return
+        if (document.querySelector('style[data-plugin-css="dsh-skills-butler/panel.css"]')) {
+          stylesInjected = true
+          return
+        }
+        var tag = document.createElement('style')
+        tag.dataset.plugin = 'dsh-skills-butler'
+        tag.dataset.pluginCss = 'dsh-skills-butler/panel.css'
+        tag.textContent = CSS
+        document.head.appendChild(tag)
+        stylesInjected = true
+      } catch (error) { /* styling failure must never break the panel */ }
+    }
+
     /** Error boundary: a render crash must show diagnostics, not a blank page. */
     class SectionBoundary extends React.Component {
       constructor(props) {
@@ -454,7 +479,6 @@ window.__ModuleLoader__.load({
         if (this.state.error) {
           diag('boundary-render', (this.state.error && this.state.error.message) || this.state.error)
           return h('div', { className: 'skb-root' },
-            h('style', null, CSS),
             h('div', { className: 'skb-notice skb-notice--error', role: 'alert' },
               'Skills butler crashed: ' + String((this.state.error && this.state.error.message) || this.state.error)))
         }
@@ -462,13 +486,8 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** Registered component: boundary-wrapped inner section. */
+    /** Registered component (direct, mirroring dsh-mcp-tools). */
     function SkillsSection(props) {
-      return h(SectionBoundary, null, h(SkillsSectionInner, props))
-    }
-
-    /** Main settings section body. `t` arrives from the locale prop machinery. */
-    function SkillsSectionInner(props) {
       const rootRefCb = useCallback((el) => {
         if (!el) return
         try {
@@ -496,7 +515,7 @@ window.__ModuleLoader__.load({
         } catch (e) { diag('ref-error', (e && e.message) || e) }
       }, [])
       diag('render', 'props.t=' + typeof props.t)
-      const t = (typeof props.t === 'function' && props.t) || fallbackT
+      const t = currentT || fallbackT
       const [view, setView] = useState(null)            // { roots, skills, env, lockfiles, paths }
       const [error, setError] = useState(null)
       const [notice, setNotice] = useState(null)
@@ -752,7 +771,6 @@ window.__ModuleLoader__.load({
 
       if (!view) {
         return h('div', { className: 'skb-root', ref: rootRefCb },
-          h('style', { 'data-skb-style': '1' }, CSS),
           h('h1', { className: 'skb-title' }, t('panel.title')),
           h('div', { className: 'skb-empty' }, error ? t('list.error') + '：' + error : t('list.loading')))
       }
@@ -760,7 +778,6 @@ window.__ModuleLoader__.load({
       const cliDown = view.env && view.env.ok === false
 
       return h('div', { className: 'skb-root' + (busy ? ' skb-mutating' : ''), ref: rootRefCb },
-        h('style', null, CSS),
 
         h('div', { className: 'skb-header' },
           h('div', null,
@@ -973,6 +990,7 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
+      injectStyles()
       if (ctx.effect && typeof ctx.effect === 'function') {
         ctx.effect(() => {
           if (ctx.locale && typeof ctx.locale.register === 'function') {
@@ -983,10 +1001,13 @@ window.__ModuleLoader__.load({
       } else if (ctx.locale && typeof ctx.locale.register === 'function') {
         ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en })
       }
-      let t = fallbackT
       try {
-        if (ctx.locale && typeof ctx.locale.bind === 'function') t = ctx.locale.bind(NS)
+        if (ctx.locale && typeof ctx.locale.bind === 'function') {
+          const bound = ctx.locale.bind(NS)
+          currentT = (key) => { try { return bound(key) } catch { return fallbackT(key) } }
+        }
       } catch { /* locale unbound: fall back to zh */ }
+      const t = currentT
       const slots = ctx && ctx.slots
       diag('apply', 'slots=' + typeof (slots && slots.inject) + ' locale=' + typeof (ctx && ctx.locale && ctx.locale.bind))
       if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
@@ -998,12 +1019,14 @@ window.__ModuleLoader__.load({
             id: 'skills-butler',
             order: 30,
             locale: NS,
-            label: () => { try { return t('nav') } catch { return fallbackT('nav') } }
+            label: () => { try { return t('nav') } catch { return fallbackT('nav') } },
+            inject: () => ({})
           }, SkillsPanelIcon))
           slots.inject('main', () => slots.register({
             name: 'main',
             key: 'skills-butler',
-            locale: NS
+            locale: NS,
+            inject: () => ({})
           }, SkillsSection))
           diag('apply-main-registered')
         } catch (e) {
@@ -1018,6 +1041,10 @@ window.__ModuleLoader__.load({
           locale: NS,
           label: () => {
             try { return t('nav') } catch { return fallbackT('nav') }
+          },
+          inject: () => {
+            diag('inject-called')
+            return {}
           }
         }, SkillsSection))
       }
