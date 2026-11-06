@@ -462,8 +462,13 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** Main settings section. `t` arrives from the locale prop machinery. */
+    /** Registered component: boundary-wrapped inner section. */
     function SkillsSection(props) {
+      return h(SectionBoundary, null, h(SkillsSectionInner, props))
+    }
+
+    /** Main settings section body. `t` arrives from the locale prop machinery. */
+    function SkillsSectionInner(props) {
       const rootRefCb = useCallback((el) => {
         if (!el) return
         try {
@@ -985,13 +990,8 @@ window.__ModuleLoader__.load({
       const slots = ctx && ctx.slots
       diag('apply', 'slots=' + typeof (slots && slots.inject) + ' locale=' + typeof (ctx && ctx.locale && ctx.locale.bind))
       if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
-        // `t` comes from the locale prop machinery (registration `locale: NS`);
-        // injecting it manually too conflicts and blanks the section.
-        const SafeSection = (props) => h(SectionBoundary, null, h(SkillsSection, props))
-
-        // Primary surface: sidebar panel + keyed main view — the same mount
-        // path dsh-workspace-memories uses, which renders reliably. The
-        // settings.section registration below stays as a secondary surface.
+        // Mirror the proven dsh-workspace-memories registration exactly:
+        // no inject face, component registered directly.
         try {
           slots.inject('sidebar.panellist', () => slots.register({
             name: 'sidebar.panellist',
@@ -1003,14 +1003,14 @@ window.__ModuleLoader__.load({
           slots.inject('main', () => slots.register({
             name: 'main',
             key: 'skills-butler',
-            locale: NS,
-            inject: () => ({})
-          }, SafeSection))
+            locale: NS
+          }, SkillsSection))
           diag('apply-main-registered')
         } catch (e) {
           diag('apply-main-error', (e && e.message) || e)
         }
 
+        // Secondary surface (settings nav). Same proven shape: no inject.
         slots.inject('settings.section', () => slots.register({
           name: 'settings.section',
           id: SECTION_ID,
@@ -1018,12 +1018,8 @@ window.__ModuleLoader__.load({
           locale: NS,
           label: () => {
             try { return t('nav') } catch { return fallbackT('nav') }
-          },
-          inject: () => {
-            diag('inject-called')
-            return {}
           }
-        }, SafeSection))
+        }, SkillsSection))
       }
     }
 
