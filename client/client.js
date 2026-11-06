@@ -258,6 +258,28 @@ window.__ModuleLoader__.load({
 
     const fallbackT = (key) => (DICT.zh && DICT.zh[key]) || key
     let currentT = fallbackT
+    let heldEl = null
+    try {
+      const mo = new MutationObserver((muts) => {
+        for (const m of muts) {
+          if (!m.removedNodes || !m.removedNodes.length) continue
+          for (const n of m.removedNodes) {
+            try {
+              if (heldEl && n && n.contains && (n === heldEl || n.contains(heldEl))) {
+                diag('removed', JSON.stringify({
+                  parentCls: (m.target.className || '').toString().slice(0, 60),
+                  parentTag: m.target.tagName,
+                  removedTag: n.tagName,
+                  removedCls: (n.className || '').toString().slice(0, 60),
+                  heldIsConnected: heldEl.isConnected
+                }))
+              }
+            } catch (e) { /* noop */ }
+          }
+        }
+      })
+      mo.observe(document.documentElement, { childList: true, subtree: true })
+    } catch (e) { /* diagnostics never break the panel */ }
 
     // Remote diagnostics: the harness page is unreachable from the agent, so
     // each lifecycle stage writes a breadcrumb into localStorage; the leveldb
@@ -490,6 +512,7 @@ window.__ModuleLoader__.load({
     function SkillsSection(props) {
       const rootRefCb = useCallback((el) => {
         if (!el) return
+        heldEl = el
         try {
           const rect = el.getBoundingClientRect()
           let ancestor = el.parentElement
@@ -574,6 +597,8 @@ window.__ModuleLoader__.load({
             }
             walk(document)
             diag('dom', JSON.stringify({
+              heldConnected: heldEl ? heldEl.isConnected : 'none',
+              heldSame: heldEl ? heldEl.ownerDocument === document : 'none',
               rootFound: !!el,
               skbInDocument: skbAll.length,
               skbInShadow: shadowSkb,
