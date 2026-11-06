@@ -14,6 +14,15 @@ window.__ModuleLoader__.load({
     var module = { exports: {} };
     var exports = module.exports;
     const React = require('react')
+    let ReactDOM = null
+    try { ReactDOM = require('react-dom') } catch (e) { ReactDOM = null }
+    let createRootFn = null
+    try {
+      const client = require('react-dom/client')
+      if (client && typeof client.createRoot === 'function') createRootFn = client.createRoot
+    } catch (e) { /* older table */ }
+    if (!createRootFn && ReactDOM && typeof ReactDOM.createRoot === 'function') createRootFn = ReactDOM.createRoot
+    const legacyRender = !createRootFn && ReactDOM && typeof ReactDOM.render === 'function' ? ReactDOM.render : null
     const h = React.createElement
     const { useCallback, useEffect, useMemo, useRef, useState } = React
 
@@ -506,6 +515,38 @@ window.__ModuleLoader__.load({
         }
         return this.props.children
       }
+    }
+
+
+    /** Positions the self-owned panel over the settings content column. */
+    function SelfRoot() {
+      const hostRef = React.useRef(null)
+      const [target, setTarget] = React.useState(null)
+      React.useEffect(() => {
+        const host = hostRef.current && hostRef.current.parentElement
+        const locate = () => {
+          try {
+            const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
+            const opts = dialog && dialog.querySelector('[class*="options"]')
+            if (!opts) { if (host) host.style.display = 'none'; return }
+            const r = opts.getBoundingClientRect()
+            if (host) {
+              host.style.display = 'block'
+              host.style.left = r.left + 'px'
+              host.style.top = r.top + 'px'
+              host.style.width = r.width + 'px'
+              host.style.height = r.height + 'px'
+            }
+            setTarget({ key: Math.round(r.left) + ':' + Math.round(r.top) + ':' + Math.round(r.width) })
+          } catch (e) { /* noop */ }
+        }
+        locate()
+        const timer = setInterval(locate, 500)
+        window.addEventListener('resize', locate)
+        return () => { clearInterval(timer); window.removeEventListener('resize', locate) }
+      }, [])
+      return h('div', { ref: hostRef, style: { pointerEvents: 'auto', height: '100%' } },
+        h(SkillsSection, { key: target ? 'placed' : 'pending' }))
     }
 
     /** Registered component (direct, mirroring dsh-mcp-tools). */
@@ -1074,10 +1115,10 @@ window.__ModuleLoader__.load({
       const slots = ctx && ctx.slots
       diag('apply', 'slots=' + typeof (slots && slots.inject) + ' locale=' + typeof (ctx && ctx.locale && ctx.locale.bind))
       if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
-        // Bisection: ONE inject only. Multiple slots.inject registrations from
-        // one bundle churn the ledger (each reinstall bumps the slot version
-        // mid-commit and React discards the in-flight DOM — the exact
-        // mount-then-vanish signature). dsh-mcp-tools registers exactly one.
+        // The settings slot tree disposes entry DOM without unmounting
+        // (Offscreen-style hidden reconciliation): the panel must live in a
+        // self-owned React root under document.body. The slot entry stays as
+        // an invisible sentinel that only keeps the nav item alive.
         slots.inject('settings.section', () => {
           diag('reinstall', String(Date.now()))
           return slots.register({
@@ -1088,13 +1129,36 @@ window.__ModuleLoader__.load({
             label: () => {
               try { return t('nav') } catch { return fallbackT('nav') }
             },
-            inject: () => {
-              diag('inject-called')
-              return {}
-            }
-          }, SkillsSection)
+            inject: () => ({})
+          }, function SkillsSentinel() { return null })
         })
         diag('apply-settings-registered')
+
+        if (createRootFn || legacyRender) {
+          try {
+            const host = document.createElement('div')
+            host.id = 'skb-self-host'
+            host.style.cssText = 'position:fixed;inset:0;z-index:1001;pointer-events:none;display:none;'
+            document.body.appendChild(host)
+            let root = null
+            if (createRootFn) {
+              root = createRootFn(host)
+              root.render(h(SelfRoot))
+            } else {
+              legacyRender(h(SelfRoot), host)
+            }
+            ctx.effect(() => () => {
+              try { if (root) root.unmount() } catch (e) { /* noop */ }
+              try { if (ReactDOM && ReactDOM.unmountComponentAtNode) ReactDOM.unmountComponentAtNode(host) } catch (e) { /* noop */ }
+              try { host.remove() } catch (e) { /* noop */ }
+            }, 'skills-butler: self root')
+            diag('self-root-mounted')
+          } catch (e) {
+            diag('self-root-error', (e && e.message) || e)
+          }
+        } else {
+          diag('self-root-unavailable', 'react-dom missing from module table')
+        }
       }
     }
 
