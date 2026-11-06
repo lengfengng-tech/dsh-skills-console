@@ -954,6 +954,19 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** Decorative cube glyph for the sidebar panel row. */
+    function SkillsPanelIcon({ size }) {
+      const edge = typeof size === 'number' ? size : 18
+      return h('svg', {
+        viewBox: '0 0 24 24', width: edge, height: edge, 'aria-hidden': true,
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinejoin: 'round',
+        style: { display: 'block' }
+      },
+        h('path', { d: 'M12 2.7 21 7.5v9L12 21.3 3 16.5v-9L12 2.7z' }),
+        h('path', { d: 'M3 7.5l9 4.8 9-4.8' }),
+        h('path', { d: 'M12 21.3v-9' }))
+    }
+
     function apply(ctx) {
       if (ctx.effect && typeof ctx.effect === 'function') {
         ctx.effect(() => {
@@ -975,6 +988,29 @@ window.__ModuleLoader__.load({
         // `t` comes from the locale prop machinery (registration `locale: NS`);
         // injecting it manually too conflicts and blanks the section.
         const SafeSection = (props) => h(SectionBoundary, null, h(SkillsSection, props))
+
+        // Primary surface: sidebar panel + keyed main view — the same mount
+        // path dsh-workspace-memories uses, which renders reliably. The
+        // settings.section registration below stays as a secondary surface.
+        try {
+          slots.inject('sidebar.panellist', () => slots.register({
+            name: 'sidebar.panellist',
+            id: 'skills-butler',
+            order: 30,
+            locale: NS,
+            label: () => { try { return t('nav') } catch { return fallbackT('nav') } }
+          }, SkillsPanelIcon))
+          slots.inject('main', () => slots.register({
+            name: 'main',
+            key: 'skills-butler',
+            locale: NS,
+            inject: () => ({})
+          }, SafeSection))
+          diag('apply-main-registered')
+        } catch (e) {
+          diag('apply-main-error', (e && e.message) || e)
+        }
+
         slots.inject('settings.section', () => slots.register({
           name: 'settings.section',
           id: SECTION_ID,
