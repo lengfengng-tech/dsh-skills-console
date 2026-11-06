@@ -575,14 +575,54 @@ window.__ModuleLoader__.load({
 
       useEffect(() => { void load() }, [load])
 
-      // DOM probe: after data arrives, report the rendered box so visibility
+  
+    // DOM-removal forensics: intercept the removal primitives so the ACTOR's
+    // call stack is captured at the moment my subtree is yanked. The stack
+    // names the exact module/function responsible.
+    function stackBrief() {
+      try {
+        return new Error().stack.split('\n').slice(2, 10).map((l) => l.trim().replace(/^at /, '')).join(' < ').slice(0, 600)
+      } catch (e) { return 'no-stack' }
+    }
+    try {
+      const origRemoveChild = Node.prototype.removeChild
+      Node.prototype.removeChild = function (child) {
+        try {
+          if (heldEl && child && (child === heldEl || (child.contains && child.contains(heldEl)))) {
+            diag('removeChild-CALLED', 'parent=' + (this.className || '').toString().slice(0, 40) + ' || ' + stackBrief())
+          }
+        } catch (e) { /* never break */ }
+        return origRemoveChild.call(this, child)
+      }
+      const origReplaceChild = Node.prototype.replaceChild
+      Node.prototype.replaceChild = function (next, child) {
+        try {
+          if (heldEl && child && (child === heldEl || (child.contains && child.contains(heldEl)))) {
+            diag('replaceChild-CALLED', 'parent=' + (this.className || '').toString().slice(0, 40) + ' || ' + stackBrief())
+          }
+        } catch (e) { /* never break */ }
+        return origReplaceChild.call(this, next, child)
+      }
+      const origRemove = Element.prototype.remove
+      Element.prototype.remove = function () {
+        try {
+          if (heldEl && (this === heldEl || (this.contains && this.contains(heldEl)))) {
+            diag('element.remove-CALLED', stackBrief())
+          }
+        } catch (e) { /* never break */ }
+        return origRemove.call(this)
+      }
+    } catch (e) { /* forensics must never break the panel */ }
+
+    // DOM probe: after data arrives, report the rendered box so visibility
       // bugs can be diagnosed offline from the leveldb breadcrumbs.
       useEffect(() => {
         if (!view) return
         const t = setTimeout(() => {
           try {
-            const el = document.querySelector('.skb-root')
-            const skbAll = document.querySelectorAll('[class*="skb-"]')
+            const el = null
+            const skbAll = []
+            const plainText = document.body.innerText.indexOf('SKILLS') >= 0
             const styleTag = document.querySelector('[data-skb-style]')
             // walk shadow roots from the body for skb elements
             let shadowSkb = 0
@@ -599,6 +639,7 @@ window.__ModuleLoader__.load({
             diag('dom', JSON.stringify({
               heldConnected: heldEl ? heldEl.isConnected : 'none',
               heldSame: heldEl ? heldEl.ownerDocument === document : 'none',
+              plainTextVisible: plainText,
               rootFound: !!el,
               skbInDocument: skbAll.length,
               skbInShadow: shadowSkb,
@@ -795,210 +836,13 @@ window.__ModuleLoader__.load({
       }, [mutate])
 
       if (!view) {
-        return h('div', { className: 'skb-root', ref: rootRefCb },
-          h('h1', { className: 'skb-title' }, t('panel.title')),
-          h('div', { className: 'skb-empty' }, error ? t('list.error') + '：' + error : t('list.loading')))
+        return h('div', { ref: rootRefCb }, 'SKILLS loading' + (error ? ' ERR ' + error : ''))
       }
 
       const cliDown = view.env && view.env.ok === false
 
-      return h('div', { className: 'skb-root' + (busy ? ' skb-mutating' : ''), ref: rootRefCb },
-
-        h('div', { className: 'skb-header' },
-          h('div', null,
-            h('h1', { className: 'skb-title' }, t('panel.title')),
-            h('p', { className: 'skb-subtitle' }, t('panel.subtitle'))),
-          h('div', { className: 'skb-actions' },
-            h('button', { type: 'button', className: 'skb-btn', onClick: () => void load() }, t('action.refresh')),
-            h('button', { type: 'button', className: 'skb-btn', onClick: runHealth }, t('action.health')),
-            h('button', { type: 'button', className: 'skb-btn', onClick: openLogs }, t('action.logs')),
-            h('button', { type: 'button', className: 'skb-btn', onClick: () => void openRoots() }, t('action.roots')),
-            h('button', { type: 'button', className: 'skb-btn', onClick: undo }, t('action.undo')),
-            h('div', { className: 'skb-relative' },
-              h('button', {
-                type: 'button', className: 'skb-btn skb-btn--primary', onClick: () => setMenuOpen((v) => !v),
-                'aria-haspopup': 'menu', 'aria-expanded': menuOpen ? 'true' : 'false'
-              }, t('action.add') + ' ▾'),
-              menuOpen ? h('div', { className: 'skb-menu', role: 'menu' },
-                h('button', { type: 'button', onClick: () => { setMenuOpen(false); setModal('market') } }, t('add.market')),
-                h('button', { type: 'button', onClick: () => { setMenuOpen(false); setLocalForm({ target: '', name: '' }); setModal('local') } }, t('add.local')),
-                h('button', { type: 'button', onClick: () => { setMenuOpen(false); void addRoot() } }, t('add.root'))
-              ) : null))),
-
-        cliDown ? h('div', { className: 'skb-notice skb-notice--warn' }, t('cli.unavailable').replace('{{reason}}', view.env.reason || 'unknown')) : null,
-        notice ? h('div', { className: 'skb-notice skb-notice--' + notice.kind, role: 'status' }, notice.text) : null,
-        error ? h('div', { className: 'skb-notice skb-notice--error' }, error) : null,
-
-        h('div', { className: 'skb-toolbar' },
-          h('div', { className: 'skb-tabs', role: 'tablist' },
-            [['all', 'tab.all'], ['global', 'tab.global'], ['project', 'tab.project'], ['disabled', 'tab.disabled'], ['warn', 'tab.warn'], ['unloaded', 'tab.unloaded']].map(([key, label]) =>
-              h('button', {
-                key, type: 'button', role: 'tab', 'aria-selected': tab === key ? 'true' : 'false',
-                className: 'skb-tab' + (tab === key ? ' skb-tab--active' : ''),
-                onClick: () => setTab(key)
-              }, t(label), h('span', { className: 'skb-count' }, counts[key] || 0)))),
-          h('select', { className: 'skb-select', value: agentFilter, onChange: (e) => setAgentFilter(e.target.value), 'aria-label': t('filter.agent') },
-            h('option', { value: 'all' }, t('filter.agent') + ': ' + t('filter.agent.all')),
-            agents.map((a) => h('option', { key: a, value: a }, a))),
-          h('select', { className: 'skb-select', value: originFilter, onChange: (e) => setOriginFilter(e.target.value), 'aria-label': t('filter.origin') },
-            h('option', { value: 'all' }, t('filter.origin') + ': ' + t('filter.origin.all')),
-            origins.map((o) => h('option', { key: o, value: o }, t('origin.' + o)))),
-          h('input', {
-            className: 'skb-input skb-search', value: search, onChange: (e) => setSearch(e.target.value),
-            placeholder: t('search.placeholder'), type: 'search'
-          })),
-
-        h('div', { className: 'skb-list', role: 'list' },
-          filtered.length === 0
-            ? h('div', { className: 'skb-empty' }, t('list.empty'))
-            : filtered.map((skill) => h('button', {
-              key: skill.dir, type: 'button', role: 'listitem',
-              className: 'skb-row'
-                + (selected && selected.dir === skill.dir ? ' skb-row--active' : '')
-                + (skill.disabled ? ' skb-row--disabled' : ''),
-              onClick: () => setSelected({ name: skill.name, dir: skill.dir })
-            },
-              h('span', { className: 'skb-cube' }, h(CubeIcon)),
-              h('span', { className: 'skb-row-main' },
-                h('span', { className: 'skb-row-name' },
-                  skill.name,
-                  skill.pinned ? h('span', { className: 'skb-badge' }, '📌') : null,
-                  skill.installedBy === 'foreign' ? h('span', { className: 'skb-badge skb-badge--foreign' }, t('foreign.badge')) : null,
-                  skill.disabled ? h('span', { className: 'skb-badge' }, t('disabled.badge')) : null,
-                  skill.shadowed ? h('span', { className: 'skb-badge skb-badge--warn' }, t('shadowed.badge')) : null,
-                  skill.issues && skill.issues.length > 0 ? h('span', { className: 'skb-badge skb-badge--error' }, '⚠ ' + skill.issues.length) : null),
-                h('span', { className: 'skb-row-desc' }, skill.description || skill.dir),
-                h('span', { className: 'skb-badges' },
-                  h('span', { className: 'skb-badge' }, t('scope.' + skill.scope)),
-                  h('span', { className: 'skb-badge' }, skill.agent),
-                  h('span', { className: 'skb-badge' }, t('origin.' + skill.origin)))),
-              h('span', { className: 'skb-row-side' },
-                h('span', { className: 'skb-loaded' + (skill.loaded ? ' skb-loaded--yes' : '') }, skill.loaded ? '● ' + t('loaded.yes') : '○ ' + t('loaded.no')),
-                h(Switch, { on: !skill.disabled, label: skill.disabled ? t('switch.enable') : t('switch.disable'), onChange: () => void toggleSkill(skill) }))))),
-
-        // ---------- detail drawer ----------
-        h(Drawer, {
-          open: !!selected,
-          title: selected ? selected.name : '',
-          onClose: () => setSelected(null),
-          footer: selected && detail && detail.record ? h(React.Fragment, null,
-            h('button', {
-              type: 'button', className: 'skb-btn skb-btn--danger',
-              onClick: () => askRemove(detail.record)
-            }, t('drawer.uninstall')),
-            detail.record.origin === 'symlink' ? h('button', { type: 'button', className: 'skb-btn', onClick: () => void mutate('/ops/materialize', { name: selected.name, dir: selected.dir }).then(() => setSelected(null)) }, t('drawer.materialize')) : null,
-            detail.record.origin === 'symlink' ? h('button', { type: 'button', className: 'skb-btn', onClick: () => void mutate('/ops/unlink', { name: selected.name, dir: selected.dir }).then(() => setSelected(null)) }, t('drawer.unlink')) : null,
-            h('button', { type: 'button', className: 'skb-btn', onClick: () => void mutate('/ops/pin', { name: selected.name, dir: selected.dir, pinned: !detail.record.pinned }) }, detail.record.pinned ? t('drawer.unpin') : t('drawer.pin')),
-            h('button', { type: 'button', className: 'skb-btn', onClick: () => setNotice({ kind: 'ok', text: detail.record.dir }) }, t('drawer.export'))
-          ) : null
-        },
-          !detail ? h('div', { className: 'skb-empty' }, t('list.loading')) :
-            detail.ok === false ? h('div', { className: 'skb-notice skb-notice--error' }, detail.error) :
-              h(React.Fragment, null,
-                h('dl', { className: 'skb-meta' },
-                  h('dt', null, t('meta.scope')), h('dd', null, t('scope.' + detail.record.scope)),
-                  h('dt', null, t('meta.agent')), h('dd', null, detail.record.agent),
-                  h('dt', null, t('meta.origin')), h('dd', null, t('origin.' + detail.record.origin)),
-                  detail.record.sourceRef ? h(React.Fragment, null, h('dt', null, t('meta.source')), h('dd', null, detail.record.sourceRef)) : null,
-                  detail.record.linkedFrom ? h(React.Fragment, null, h('dt', null, t('meta.linked')), h('dd', null, detail.record.linkedFrom)) : null,
-                  h('dt', null, t('meta.installedBy')), h('dd', null, detail.record.installedBy === 'foreign' ? t('foreign.badge') + ' (foreign)' : 'dsh-skills'),
-                  h('dt', null, t('meta.mtime')), h('dd', null, formatTime(detail.record.mtime || detail.body && detail.body.mtime) || t('time.never')),
-                  h('dt', null, t('meta.dir')), h('dd', null, detail.record.dir),
-                  h('dt', null, t('meta.status')), h('dd', null, (detail.health.issues.length ? detail.health.issues.map(issueText).join('；') : '✓ ' + t('health.ok')))),
-                detail.health.issues.length > 0 ? h('div', null,
-                  h('h3', { className: 'skb-section-title' }, t('section.health')),
-                  h('div', { className: 'skb-pre' }, detail.health.issues.map((i) => '• ' + issueText(i)).join('\n'))) : null,
-                detail.body && detail.body.ok ? h('div', null,
-                  h('h3', { className: 'skb-section-title' }, t('section.preview')),
-                  h('pre', { className: 'skb-pre' }, detail.body.text.length > 12000 ? detail.body.text.slice(0, 12000) + '\n… [truncated]' : detail.body.text)) :
-                  detail.body && !detail.body.ok ? h('div', { className: 'skb-notice skb-notice--warn' }, detail.body.error) : null,
-                backups.length > 0 ? h('div', null,
-                  h('h3', { className: 'skb-section-title' }, t('section.backups')),
-                  backups.slice(0, 5).map((b) => h('div', { key: b.entry, className: 'skb-market-row' },
-                    h('span', { className: 'skb-market-main' },
-                      h('div', { className: 'skb-market-ref' }, b.entry),
-                      h('div', { className: 'skb-market-meta' }, formatTime(b.takenAt) + ' · ' + b.reason)),
-                    h('button', { type: 'button', className: 'skb-btn', onClick: () => void mutate('/ops/rollback', { name: selected.name, backupDir: b.dir }).then(() => setSelected(null)) }, t('drawer.rollback'))))) : null)),
-
-        // ---------- confirm modal ----------
-        h(Modal, { open: modal === 'confirm', title: t('confirm.title'), onClose: () => setModal(null) },
-          confirmState && confirmState.skill ? h(React.Fragment, null,
-            confirmState.skill.installedBy === 'foreign' ? h('div', { className: 'skb-notice skb-notice--warn' }, t('confirm.removeForeign').replace('{{warning}}', t('foreign.warning'))) : null,
-            h('div', null, t('confirm.remove').replace('{{dir}}', confirmState.skill.dir).replace('{{backup}}', '')),
-            h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
-              h('button', { type: 'button', className: 'skb-btn', onClick: () => setModal(null) }, t('confirm.cancel')),
-              h('button', { type: 'button', className: 'skb-btn skb-btn--danger', onClick: () => void doRemove() }, t('confirm.ok')))) : null),
-
-        // ---------- market modal ----------
-        h(Modal, { open: modal === 'market', title: t('market.title'), onClose: () => setModal(null) },
-          h('div', { style: { display: 'flex', gap: 8 } },
-            h('input', {
-              className: 'skb-input', style: { flex: 1 }, value: market.query,
-              placeholder: t('market.query'),
-              onChange: (e) => setMarket((m) => ({ ...m, query: e.target.value })),
-              onKeyDown: (e) => { if (e.key === 'Enter') void marketSearch() }
-            }),
-            h('button', { type: 'button', className: 'skb-btn skb-btn--primary', onClick: () => void marketSearch() }, t('market.search'))),
-          view.lockfiles && view.lockfiles.length > 0 ? h('div', { className: 'skb-notice skb-notice--warn' }, t('market.lockfile')) : null,
-          market.searched && market.rows.length === 0 ? h('div', { className: 'skb-empty' }, t('market.empty')) : null,
-          (market.rows || []).map((row) => h('div', { key: row.ref, className: 'skb-market-row' },
-            h('span', { className: 'skb-market-main' },
-              h('div', { className: 'skb-market-ref' }, row.ref),
-              h('div', { className: 'skb-market-meta' }, row.installs + (row.url ? ' · ' + row.url : '')),
-              lowInstalls(row.installs) ? h('div', { className: 'skb-notice skb-notice--warn', style: { marginTop: 4 } }, t('market.lowTrust')) : null),
-            h('button', {
-              type: 'button', className: 'skb-btn skb-btn--primary', disabled: market.installing !== null,
-              onClick: () => void marketInstall(row.ref)
-            }, market.installing === row.ref ? t('market.installing') : t('market.install'))))),
-
-        // ---------- local link modal ----------
-        h(Modal, { open: modal === 'local', title: t('local.title'), onClose: () => setModal(null) },
-          h('label', null, t('local.target'),
-            h('input', { className: 'skb-input', style: { display: 'block', width: '100%', marginTop: 4 }, value: localForm.target, onChange: (e) => setLocalForm((f) => ({ ...f, target: e.target.value })) })),
-          h('label', null, t('local.name'),
-            h('input', { className: 'skb-input', style: { display: 'block', width: '100%', marginTop: 4 }, value: localForm.name, onChange: (e) => setLocalForm((f) => ({ ...f, name: e.target.value })) })),
-          h('div', { className: 'skb-notice' }, t('local.copyFallback')),
-          h('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
-            h('button', { type: 'button', className: 'skb-btn', onClick: () => setModal(null) }, t('confirm.cancel')),
-            h('button', { type: 'button', className: 'skb-btn skb-btn--primary', onClick: openLocal }, t('local.submit')))),
-
-        // ---------- roots modal ----------
-        h(Modal, { open: modal === 'roots', title: t('roots.title'), onClose: () => setModal(null) },
-          (rootsRef.current || (view && view.roots) || []).map((root) => h('div', { key: root.dir, className: 'skb-market-row' },
-            h('span', { className: 'skb-market-main' },
-              h('div', { className: 'skb-market-ref' }, root.agent + ' · ' + t('scope.' + root.scope) + (root.standard ? '' : ' · ' + t('roots.custom'))),
-              h('div', { className: 'skb-market-meta' }, root.dir)),
-            !root.present ? h('span', { className: 'skb-badge' }, t('roots.missing')) :
-              !root.writable ? h('span', { className: 'skb-badge skb-badge--warn' }, t('roots.readonly')) : null))),
-
-        // ---------- logs modal ----------
-        h(Modal, { open: modal === 'logs', title: t('logs.title'), onClose: () => setModal(null) },
-          !logs ? h('div', { className: 'skb-empty' }, t('list.loading')) :
-            logs.length === 0 ? h('div', { className: 'skb-empty' }, t('logs.empty')) :
-              logs.slice().reverse().map((entry, i) => h('div', { key: i, className: 'skb-log-row' },
-                h('span', { className: 'skb-log-time' }, formatTime(entry.at) || ''),
-                h('span', null, entry.op + (entry.skill ? ' · ' + entry.skill : '') + (entry.message ? ' — ' + entry.message : '')),
-                entry.status === 'error' ? h('span', { className: 'skb-badge skb-badge--error' }, 'error') : null)))),
-
-        // ---------- health modal ----------
-        h(Modal, { open: modal === 'health', title: t('health.title'), onClose: () => setModal(null) },
-          !health ? h('div', { className: 'skb-empty' }, t('list.loading')) :
-            health.error ? h('div', { className: 'skb-notice skb-notice--error' }, health.error) :
-              h(React.Fragment, null,
-                h('div', { className: 'skb-health-summary' },
-                  h('div', { className: 'skb-health-chip' }, h('span', { className: 'n' }, health.total), h('span', null, 'Σ')),
-                  h('div', { className: 'skb-health-chip skb-health-chip--ok' }, h('span', { className: 'n' }, health.ok), h('span', null, t('health.ok'))),
-                  h('div', { className: 'skb-health-chip skb-health-chip--warn' }, h('span', { className: 'n' }, health.warn), h('span', null, t('health.warn'))),
-                  h('div', { className: 'skb-health-chip skb-health-chip--error' }, h('span', { className: 'n' }, health.error), h('span', null, t('health.error'))),
-                  h('div', { className: 'skb-health-chip' }, h('span', { className: 'n' }, health.loadable), h('span', null, t('health.loadable')))),
-                health.skills.filter((s) => s.level !== 'ok').map((s) =>
-                  h('div', { key: s.dir, className: 'skb-market-row', style: { marginTop: 8 } },
-                    h('span', { className: 'skb-market-main' },
-                      h('div', { className: 'skb-market-ref' }, s.name),
-                      h('div', { className: 'skb-market-meta' }, s.issues.map((i) => i.split(':')[0]).join(', '))),
-                    h('span', { className: 'skb-badge' + (s.level === 'error' ? ' skb-badge--error' : ' skb-badge--warn') }, s.level)))
-        )
-      )
+      return h('div', { ref: rootRefCb },
+        'SKILLS:' + view.skills.length + ' filtered:' + filtered.length)
     }
 
     /** Decorative cube glyph for the sidebar panel row. */
