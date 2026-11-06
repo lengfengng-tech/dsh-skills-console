@@ -1036,42 +1036,27 @@ window.__ModuleLoader__.load({
       const slots = ctx && ctx.slots
       diag('apply', 'slots=' + typeof (slots && slots.inject) + ' locale=' + typeof (ctx && ctx.locale && ctx.locale.bind))
       if (slots && typeof slots.inject === 'function' && typeof slots.register === 'function') {
-        // Mirror the proven dsh-workspace-memories registration exactly:
-        // no inject face, component registered directly.
-        try {
-          slots.inject('sidebar.panellist', () => slots.register({
-            name: 'sidebar.panellist',
-            id: 'skills-butler',
-            order: 30,
+        // Bisection: ONE inject only. Multiple slots.inject registrations from
+        // one bundle churn the ledger (each reinstall bumps the slot version
+        // mid-commit and React discards the in-flight DOM — the exact
+        // mount-then-vanish signature). dsh-mcp-tools registers exactly one.
+        slots.inject('settings.section', () => {
+          diag('reinstall', String(Date.now()))
+          return slots.register({
+            name: 'settings.section',
+            id: SECTION_ID,
+            order: 25,
             locale: NS,
-            label: () => { try { return t('nav') } catch { return fallbackT('nav') } },
-            inject: () => ({})
-          }, SkillsPanelIcon))
-          slots.inject('main', () => slots.register({
-            name: 'main',
-            key: 'skills-butler',
-            locale: NS,
-            inject: () => ({})
-          }, SkillsSection))
-          diag('apply-main-registered')
-        } catch (e) {
-          diag('apply-main-error', (e && e.message) || e)
-        }
-
-        // Secondary surface (settings nav). Same proven shape: no inject.
-        slots.inject('settings.section', () => slots.register({
-          name: 'settings.section',
-          id: SECTION_ID,
-          order: 25,
-          locale: NS,
-          label: () => {
-            try { return t('nav') } catch { return fallbackT('nav') }
-          },
-          inject: () => {
-            diag('inject-called')
-            return {}
-          }
-        }, SkillsSection))
+            label: () => {
+              try { return t('nav') } catch { return fallbackT('nav') }
+            },
+            inject: () => {
+              diag('inject-called')
+              return {}
+            }
+          }, SkillsSection)
+        })
+        diag('apply-settings-registered')
       }
     }
 
