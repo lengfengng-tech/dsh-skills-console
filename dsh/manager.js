@@ -141,27 +141,34 @@ export class SkillsManager {
             debug.results.push('ERR:' + String((error && error.message) || error).slice(0, 60))
           }
         }
-        // Filesystem skills live in agent-preset layers; merge a few live
-        // agents' scope chains to see what sessions actually load.
+        // Real session cwds: the persistence layer lists every stored session
+        // with its header (the in-process store only shows the root session).
         try {
-          const agents = this.ctx.agents && typeof this.ctx.agents.list === 'function' ? this.ctx.agents.list() : []
-          let probed = 0
-          for (const agent of agents) {
-            if (!agent || !agent.ctx || probed >= 5) continue
-            probed += 1
-            try {
-              const cwd = agent.session && agent.session.header && agent.session.header.cwd
-              const listed = await skills.list({ scope: agent.ctx, ...(cwd ? { cwd } : {}) })
-              debug.results.push('agent:' + (Array.isArray(listed) ? listed.length : -1))
-              for (const item of listed || []) {
-                if (item && typeof item.name === 'string') names.add(item.name)
-              }
-            } catch (error) {
-              debug.results.push('agentERR:' + String((error && error.message) || error).slice(0, 60))
+          const persistence = this.ctx.sessionPersistence
+          if (persistence && typeof persistence.list === 'function') {
+            const snapshots = await persistence.list()
+            for (const snap of snapshots || []) {
+              const cwd = snap && snap.header && snap.header.cwd
+              if (typeof cwd === 'string' && cwd && !cwd.includes('/.dsh/')) cwds.add(cwd)
             }
           }
-          debug.probedAgents = probed
-        } catch { /* agents unavailable */ }
+        } catch (error) {
+          debug.persistenceErr = String((error && error.message) || error).slice(0, 80)
+        }
+        debug.v = 2
+        for (const cwd of cwds) {
+          if (debug.cwds.includes(cwd)) continue
+          try {
+            const listed = await skills.list({ cwd })
+            debug.results.push('late:' + (Array.isArray(listed) ? listed.length : -1))
+            for (const item of listed || []) {
+              if (item && typeof item.name === 'string') names.add(item.name)
+            }
+          } catch (error) {
+            debug.results.push('lateERR:' + String((error && error.message) || error).slice(0, 60))
+          }
+        }
+        debug.cwds = [...cwds]
         debug.total = names.size
       }
     } catch { /* registry unavailable: loaded column stays unknown */ }
