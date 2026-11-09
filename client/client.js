@@ -537,7 +537,12 @@ window.__ModuleLoader__.load({
               host.style.width = r.width + 'px'
               host.style.height = r.height + 'px'
             }
-            setTarget({ key: Math.round(r.left) + ':' + Math.round(r.top) + ':' + Math.round(r.width) })
+            const key = Math.round(r.left) + ':' + Math.round(r.top) + ':' + Math.round(r.width) + 'x' + Math.round(r.height)
+            setTarget((prev) => {
+              if (prev && prev.key === key) return prev
+              console.log('[skills-butler] placed at', key)
+              return { key }
+            })
           } catch (e) { /* noop */ }
         }
         locate()
@@ -1136,10 +1141,13 @@ window.__ModuleLoader__.load({
 
         if (createRootFn || legacyRender) {
           try {
+            const stale = document.querySelectorAll('#skb-self-host')
+            for (const n of stale) { try { n.remove() } catch (e) { /* noop */ } }
             const host = document.createElement('div')
             host.id = 'skb-self-host'
             host.style.cssText = 'position:fixed;inset:0;z-index:1001;pointer-events:none;display:none;'
             document.body.appendChild(host)
+            console.log('[skills-butler] self host created', stale.length)
             let root = null
             if (createRootFn) {
               root = createRootFn(host)
