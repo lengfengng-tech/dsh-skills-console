@@ -111,10 +111,20 @@ export class SkillsManager {
         for (const root of this.roots()) {
           if (root.scope === 'project') cwds.add(path.dirname(root.dir))
         }
+        // Registered workspaces are the real project directories whose agents
+        // load skills; root-level session headers only name the profile dir.
+        try {
+          const registry = this.ctx.workspaceRegistry
+          if (registry && typeof registry.list === 'function') {
+            for (const w of registry.list()) {
+              if (w && typeof w.path === 'string' && w.path) cwds.add(path.resolve(w.path))
+            }
+          }
+        } catch { /* registry unavailable */ }
         try {
           const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
           for (const s of sessions) {
-            if (s && s.header && typeof s.header.cwd === 'string' && s.header.cwd) cwds.add(s.header.cwd)
+            if (s && s.header && typeof s.header.cwd === 'string' && s.header.cwd && !s.header.cwd.includes('.dsh/profiles')) cwds.add(s.header.cwd)
           }
         } catch { /* sessions unavailable */ }
         if (cwds.size === 0) cwds.add(process.cwd())
