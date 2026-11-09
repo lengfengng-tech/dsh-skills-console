@@ -141,6 +141,27 @@ export class SkillsManager {
             debug.results.push('ERR:' + String((error && error.message) || error).slice(0, 60))
           }
         }
+        // Filesystem skills live in agent-preset layers; merge a few live
+        // agents' scope chains to see what sessions actually load.
+        try {
+          const agents = this.ctx.agents && typeof this.ctx.agents.list === 'function' ? this.ctx.agents.list() : []
+          let probed = 0
+          for (const agent of agents) {
+            if (!agent || !agent.ctx || probed >= 5) continue
+            probed += 1
+            try {
+              const cwd = agent.session && agent.session.header && agent.session.header.cwd
+              const listed = await skills.list({ scope: agent.ctx, ...(cwd ? { cwd } : {}) })
+              debug.results.push('agent:' + (Array.isArray(listed) ? listed.length : -1))
+              for (const item of listed || []) {
+                if (item && typeof item.name === 'string') names.add(item.name)
+              }
+            } catch (error) {
+              debug.results.push('agentERR:' + String((error && error.message) || error).slice(0, 60))
+            }
+          }
+          debug.probedAgents = probed
+        } catch { /* agents unavailable */ }
         debug.total = names.size
       }
     } catch { /* registry unavailable: loaded column stays unknown */ }
