@@ -534,15 +534,23 @@ window.__ModuleLoader__.load({
       const [target, setTarget] = React.useState(null)
       React.useEffect(() => {
         const host = hostRef.current && hostRef.current.parentElement
+        let lastState = null
         const locate = () => {
           try {
-            const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
-            const opts = dialog && dialog.querySelector('[class*="options"]')
+            let opts = null
+            const dialogs = document.querySelectorAll('[role="dialog"]')
+            for (const d of dialogs) {
+              const cand = d.querySelector('[class*="options"]')
+              if (cand) { opts = cand; break }
+            }
             if (!opts) {
               if (host) host.style.display = 'none'
-              console.log('[skills-butler] dialog/options not found')
+              if (lastState !== 'missing') console.log('[skills-butler] state=missing dialogs=' + dialogs.length)
+              lastState = 'missing'
               return
             }
+            if (lastState !== 'found') console.log('[skills-butler] state=found dialogs=' + dialogs.length)
+            lastState = 'found'
             const r = opts.getBoundingClientRect()
             if (host) {
               host.style.display = 'block'
@@ -1156,6 +1164,10 @@ window.__ModuleLoader__.load({
 
         if (createRootFn || legacyRender) {
           try {
+            if (window.__skbSelfRoot) {
+              try { window.__skbSelfRoot.unmount && window.__skbSelfRoot.unmount() } catch (e) { /* noop */ }
+              window.__skbSelfRoot = null
+            }
             const stale = document.querySelectorAll('#skb-self-host')
             for (const n of stale) { try { n.remove() } catch (e) { /* noop */ } }
             const host = document.createElement('div')
@@ -1170,6 +1182,7 @@ window.__ModuleLoader__.load({
             } else {
               legacyRender(h(SelfRoot), host)
             }
+            window.__skbSelfRoot = root || 'legacy'
             ctx.effect(() => () => {
               try { if (root) root.unmount() } catch (e) { /* noop */ }
               try { if (ReactDOM && ReactDOM.unmountComponentAtNode) ReactDOM.unmountComponentAtNode(host) } catch (e) { /* noop */ }
