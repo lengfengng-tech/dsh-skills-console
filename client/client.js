@@ -360,7 +360,7 @@ window.__ModuleLoader__.load({
 
     function load() {
       return api('/view').then(function (data) {
-        diag('view-ok', 'skills=' + (data.skills ? data.skills.length : '?'))
+        diag('view-ok', 'skills=' + (data.skills ? data.skills.length : '?') + ' loaded=' + (data.skills ? data.skills.filter(function (x) { return x.loaded }).length : '?') + ' dbg=' + JSON.stringify(data.loadedDebug || null).slice(0, 240))
         setState({ view: data, error: null })
         return data
       }).catch(function (e) {

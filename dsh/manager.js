@@ -100,9 +100,11 @@ export class SkillsManager {
     const now = Date.now()
     if (now - this._loadedCache.at < 2000) return this._loadedCache.names
     const names = new Set()
+    const debug = { service: false, cwds: [], results: [], total: 0 }
     try {
       const skills = this.ctx.get('skills')
       if (skills && typeof skills.list === 'function') {
+        debug.service = true
         // The registry collects per cwd: a root-context read sees nothing.
         // Probe every project root plus each live session's cwd and union.
         const cwds = new Set()
@@ -116,16 +118,23 @@ export class SkillsManager {
           }
         } catch { /* sessions unavailable */ }
         if (cwds.size === 0) cwds.add(process.cwd())
+        debug.cwds = [...cwds]
         for (const cwd of cwds) {
           try {
             const listed = await skills.list({ cwd })
+            const count = Array.isArray(listed) ? listed.length : -1
+            debug.results.push(count)
             for (const item of listed || []) {
               if (item && typeof item.name === 'string') names.add(item.name)
             }
-          } catch { /* one bad cwd must not block others */ }
+          } catch (error) {
+            debug.results.push('ERR:' + String((error && error.message) || error).slice(0, 60))
+          }
         }
+        debug.total = names.size
       }
     } catch { /* registry unavailable: loaded column stays unknown */ }
+    this._loadedDebug = debug
     this._loadedCache = { at: now, names }
     return names
   }
@@ -154,6 +163,7 @@ export class SkillsManager {
       roots,
       skills: enriched,
       env: this.cli.available(),
+      loadedDebug: this._loadedDebug || null,
       lockfiles: this.lockfiles(),
       paths: { state: path.join(managerDir(), 'state.json'), backups: backupsDir() }
     }
