@@ -746,13 +746,22 @@ window.__ModuleLoader__.load({
       if (!selfHost) return
       try {
         var opts = null
+        var dialog = null
         var dialogs = document.querySelectorAll('[role="dialog"]')
         for (var i = 0; i < dialogs.length; i++) {
           var cand = dialogs[i].querySelector('[class*="options"]')
-          if (cand) { opts = cand; break }
+          if (cand) { opts = cand; dialog = dialogs[i]; break }
         }
-        if (!opts) {
-          if (selfHost.style.display !== 'none') { selfHost.style.display = 'none'; diag('align', 'hidden') }
+        // The options area is shared by every settings section: only show the
+        // panel when OUR nav cell is the active one, otherwise we would cover
+        // whatever section the user picked.
+        var mine = false
+        if (dialog) {
+          var activeCell = dialog.querySelector('[aria-current="true"]')
+          if (activeCell && activeCell.textContent.trim() === t('nav')) mine = true
+        }
+        if (!opts || !mine) {
+          if (selfHost.style.display !== 'none') { selfHost.style.display = 'none'; diag('align', 'hidden mine=' + mine) }
           lastAlignKey = null
           return
         }
