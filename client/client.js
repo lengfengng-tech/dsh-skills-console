@@ -72,7 +72,8 @@ window.__ModuleLoader__.load({
         'action.roots': '浏览目录', 'action.undo': '撤销上一步', 'action.add': '添加',
         'tab.all': '全部', 'tab.global': '全局', 'tab.project': '项目',
         'tab.disabled': '已停用', 'tab.warn': '有警告', 'tab.unloaded': '未加载',
-        'search.placeholder': '搜索技能', 'list.empty': '没有匹配的技能', 'list.loading': '盘点中…',
+        'search.placeholder': '搜索技能', 'list.empty': '没有匹配的技能', 'list.loading': '盘点中…', 'list.error': '加载失败',
+        'filter.agent': 'Agent', 'filter.agent.all': '全部', 'filter.origin': '来源', 'filter.origin.all': '全部',
         'scope.global': '全局', 'scope.project': '项目',
         'origin.marketplace': '市场', 'origin.git': 'Git', 'origin.manual': '手动',
         'origin.symlink': '软链', 'origin.builtin': '内置',
@@ -124,7 +125,8 @@ window.__ModuleLoader__.load({
         'action.roots': 'Browse roots', 'action.undo': 'Undo last', 'action.add': 'Add',
         'tab.all': 'All', 'tab.global': 'Global', 'tab.project': 'Project',
         'tab.disabled': 'Disabled', 'tab.warn': 'Warnings', 'tab.unloaded': 'Unloaded',
-        'search.placeholder': 'Search skills', 'list.empty': 'No matching skills', 'list.loading': 'Inventory…',
+        'search.placeholder': 'Search skills', 'list.empty': 'No matching skills', 'list.loading': 'Inventory…', 'list.error': 'Failed to load',
+        'filter.agent': 'Agent', 'filter.agent.all': 'All', 'filter.origin': 'Origin', 'filter.origin.all': 'All',
         'scope.global': 'Global', 'scope.project': 'Project',
         'origin.marketplace': 'Market', 'origin.git': 'Git', 'origin.manual': 'Manual',
         'origin.symlink': 'Symlink', 'origin.builtin': 'Builtin',
@@ -236,7 +238,7 @@ window.__ModuleLoader__.load({
     // ------------------------------------------------------------------
     var CSS = '' +
 '.skb-host-inner{pointer-events:auto;height:100%;overflow:hidden}' +
-'.skb-root{display:flex;flex-direction:column;height:100%;box-sizing:border-box;padding:20px 24px;gap:12px;overflow:hidden;color:var(--dsw-alias-label-primary,#ddd);background:var(--dsw-alias-bg-base,#111);font:13px/1.5 -apple-system,"PingFang SC","Segoe UI",sans-serif}' +
+'.skb-root{display:flex;flex-direction:column;height:100%;box-sizing:border-box;padding:20px 24px;gap:12px;overflow:hidden;color:var(--dsw-alias-label-primary,#ddd);background:var(--dsw-alias-bg-layer-2,#1c1c1c);font:13px/1.5 -apple-system,"PingFang SC","Segoe UI",sans-serif}' +
 '.skb-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}' +
 '.skb-title{margin:0;font-size:18px;font-weight:600}.skb-subtitle{margin:4px 0 0;color:var(--dsw-alias-label-secondary,#999);max-width:640px}' +
 '.skb-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}' +
@@ -255,7 +257,7 @@ window.__ModuleLoader__.load({
 '.skb-tab .skb-count{opacity:.7;margin-left:4px;font-size:12px}' +
 '.skb-select,.skb-input{font:inherit;color:var(--dsw-alias-label-primary,#ddd);background:var(--dsw-alias-bg-layer-1,#222);border:1px solid var(--dsw-alias-border-l1,#333);border-radius:8px;padding:5px 10px}' +
 '.skb-search{flex:1;min-width:180px;max-width:360px;margin-left:auto}' +
-'.skb-list{flex:1;overflow-y:auto;border:1px solid var(--dsw-alias-border-l1,#333);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#1c1c1c)}' +
+'.skb-list{flex:1;overflow-y:auto;border:1px solid var(--dsw-alias-border-l1,#333);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#161616)}' +
 '.skb-row{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--dsw-alias-border-l1,#2a2a2a);padding:12px 16px;cursor:pointer}' +
 '.skb-row:last-child{border-bottom:none}.skb-row:hover{background:var(--dsw-alias-bg-layer-2,#242424)}' +
 '.skb-row--active{background:var(--dsw-alias-bg-layer-2,#242424)}.skb-row--disabled{opacity:.62}' +
