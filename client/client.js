@@ -317,6 +317,16 @@ window.__ModuleLoader__.load({
         try { diag('console-error', args.map((a) => (a && a.message) || String(a)).join(' | ').slice(0, 400)) } catch (e) { /* noop */ }
         origError(...args)
       }
+      const origLog = console.log.bind(console)
+      console.log = (...args) => {
+        try {
+          const text = args.map((a) => (a && a.message) || String(a)).join(' ').slice(0, 300)
+          if (text.indexOf('[skills-butler]') >= 0 || text.indexOf('React') >= 0 || text.indexOf('slot') >= 0) {
+            diag('console-log', text)
+          }
+        } catch (e) { /* noop */ }
+        origLog(...args)
+      }
     } catch (e) { /* diagnostics must never break the panel */ }
 
     async function api(path, options = {}) {
@@ -528,7 +538,11 @@ window.__ModuleLoader__.load({
           try {
             const dialog = document.querySelector('[role="dialog"][aria-modal="true"]')
             const opts = dialog && dialog.querySelector('[class*="options"]')
-            if (!opts) { if (host) host.style.display = 'none'; return }
+            if (!opts) {
+              if (host) host.style.display = 'none'
+              console.log('[skills-butler] dialog/options not found')
+              return
+            }
             const r = opts.getBoundingClientRect()
             if (host) {
               host.style.display = 'block'
