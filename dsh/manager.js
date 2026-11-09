@@ -103,9 +103,26 @@ export class SkillsManager {
     try {
       const skills = this.ctx.get('skills')
       if (skills && typeof skills.list === 'function') {
-        const listed = await skills.list()
-        for (const item of listed || []) {
-          if (item && typeof item.name === 'string') names.add(item.name)
+        // The registry collects per cwd: a root-context read sees nothing.
+        // Probe every project root plus each live session's cwd and union.
+        const cwds = new Set()
+        for (const root of this.roots()) {
+          if (root.scope === 'project') cwds.add(path.dirname(root.dir))
+        }
+        try {
+          const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
+          for (const s of sessions) {
+            if (s && s.header && typeof s.header.cwd === 'string' && s.header.cwd) cwds.add(s.header.cwd)
+          }
+        } catch { /* sessions unavailable */ }
+        if (cwds.size === 0) cwds.add(process.cwd())
+        for (const cwd of cwds) {
+          try {
+            const listed = await skills.list({ cwd })
+            for (const item of listed || []) {
+              if (item && typeof item.name === 'string') names.add(item.name)
+            }
+          } catch { /* one bad cwd must not block others */ }
         }
       }
     } catch { /* registry unavailable: loaded column stays unknown */ }
