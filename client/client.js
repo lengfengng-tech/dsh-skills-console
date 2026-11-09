@@ -793,6 +793,16 @@ window.__ModuleLoader__.load({
         document.body.appendChild(selfHost)
         if (alignTimer) clearInterval(alignTimer)
         alignTimer = setInterval(align, 500)
+        // React to dialog open/close instantly instead of up to 500ms late.
+        if (window.__skbAlignObserver) { try { window.__skbAlignObserver.disconnect() } catch (e) { /* noop */ } }
+        var alignScheduled = false
+        window.__skbAlignObserver = new MutationObserver(function () {
+          if (alignScheduled) return
+          alignScheduled = true
+          setTimeout(function () { alignScheduled = false; align() }, 40)
+        })
+        window.__skbAlignObserver.observe(document.body, { childList: true, subtree: true })
+        window.addEventListener('resize', align)
         diag('self-host-started')
       } catch (e) {
         diag('self-host-error', (e && e.message) || e)
@@ -819,6 +829,8 @@ window.__ModuleLoader__.load({
           load()
           return function () {
             if (alignTimer) clearInterval(alignTimer)
+            if (window.__skbAlignObserver) { try { window.__skbAlignObserver.disconnect() } catch (e) { /* noop */ } window.__skbAlignObserver = null }
+            window.removeEventListener('resize', align)
             if (selfHost) { try { selfHost.remove() } catch (e) { /* noop */ } selfHost = null }
           }
         }, 'skills-butler: panel lifecycle')
