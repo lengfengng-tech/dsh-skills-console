@@ -552,9 +552,10 @@ window.__ModuleLoader__.load({
               host.style.height = r.height + 'px'
             }
             const key = Math.round(r.left) + ':' + Math.round(r.top) + ':' + Math.round(r.width) + 'x' + Math.round(r.height)
+            host.style.outline = '3px solid red'
             setTarget((prev) => {
               if (prev && prev.key === key) return prev
-              console.log('[skills-butler] placed at', key)
+              console.log('[skills-butler] placed at', key, 'innerLen=' + host.innerHTML.length, 'innerText=' + host.innerText.slice(0, 40))
               return { key }
             })
           } catch (e) { /* noop */ }
