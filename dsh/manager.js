@@ -160,13 +160,29 @@ export class SkillsManager {
         try {
           const catalog = this.ctx.get('sessionSkillCatalog')
           debug.catalogPresent = !!catalog
-          const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
+          // root-context sessions.list() is empty; source ids from persistence.
+          const sessionIds = new Set()
+          try {
+            const persistence = this.ctx.get('sessionPersistence')
+            if (persistence && typeof persistence.list === 'function') {
+              for (const snap of await persistence.list() || []) {
+                if (snap && snap.id) sessionIds.add(snap.id)
+              }
+            }
+          } catch (error) {
+            debug.persistErr = String((error && error.message) || error).slice(0, 80)
+          }
+          try {
+            const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
+            for (const s of sessions) { if (s && s.id) sessionIds.add(s.id) }
+          } catch { /* noop */ }
+          debug.sessionIds = sessionIds.size
           let probed = 0
-          for (const session of sessions) {
-            if (!session || !session.id || probed >= 8) continue
+          for (const sessionId of sessionIds) {
+            if (probed >= 8) break
             probed += 1
             try {
-              const value = await catalog.list({ sessionId: session.id })
+              const value = await catalog.list({ sessionId })
               const list = value && Array.isArray(value.skills) ? value.skills : []
               debug.results.push('cat:' + list.length)
               for (const entry of list) {
