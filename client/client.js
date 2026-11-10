@@ -71,7 +71,7 @@ window.__ModuleLoader__.load({
         'action.refresh': '刷新', 'action.health': '体检', 'action.logs': '日志',
         'action.roots': '浏览目录', 'action.undo': '撤销上一步', 'action.add': '添加',
         'tab.all': '全部', 'tab.global': '全局', 'tab.project': '项目',
-        'tab.disabled': '已停用', 'tab.warn': '有警告', 'tab.unloaded': '未加载',
+        'tab.disabled': '已停用', 'tab.warn': '有警告', 'status.enabled': '已启用',
         'search.placeholder': '搜索技能', 'list.empty': '没有匹配的技能', 'list.loading': '盘点中…', 'list.error': '加载失败',
         'filter.agent': 'Agent', 'filter.agent.all': '全部', 'filter.origin': '来源', 'filter.origin.all': '全部',
         'scope.global': '全局', 'scope.project': '项目',
@@ -124,7 +124,7 @@ window.__ModuleLoader__.load({
         'action.refresh': 'Refresh', 'action.health': 'Health check', 'action.logs': 'Logs',
         'action.roots': 'Browse roots', 'action.undo': 'Undo last', 'action.add': 'Add',
         'tab.all': 'All', 'tab.global': 'Global', 'tab.project': 'Project',
-        'tab.disabled': 'Disabled', 'tab.warn': 'Warnings', 'tab.unloaded': 'Unloaded',
+        'tab.disabled': 'Disabled', 'tab.warn': 'Warnings', 'status.enabled': 'Enabled',
         'search.placeholder': 'Search skills', 'list.empty': 'No matching skills', 'list.loading': 'Inventory…', 'list.error': 'Failed to load',
         'filter.agent': 'Agent', 'filter.agent.all': 'All', 'filter.origin': 'Origin', 'filter.origin.all': 'All',
         'scope.global': 'Global', 'scope.project': 'Project',
@@ -380,7 +380,6 @@ window.__ModuleLoader__.load({
         if (S.tab === 'project' && s.scope !== 'project') return false
         if (S.tab === 'disabled' && !s.disabled) return false
         if (S.tab === 'warn' && (!s.issues || s.issues.length === 0)) return false
-        if (S.tab === 'unloaded' && s.loaded) return false
         if (S.agentFilter !== 'all' && s.agent !== S.agentFilter) return false
         if (S.originFilter !== 'all' && s.origin !== S.originFilter) return false
         if (q && !(s.name.toLowerCase().indexOf(q) >= 0 || (s.description || '').toLowerCase().indexOf(q) >= 0)) return false
@@ -448,7 +447,7 @@ window.__ModuleLoader__.load({
             el('span', { class: 'skb-badge', text: skill.agent }),
             el('span', { class: 'skb-badge', text: t('origin.' + skill.origin) }))),
         el('div', { class: 'skb-row-side' },
-          el('span', { class: 'skb-loaded' + (skill.loaded ? ' skb-loaded--yes' : ''), text: (skill.loaded ? '● ' : '○ ') + (skill.loaded ? t('loaded.yes') : t('loaded.no')) }),
+          el('span', { class: 'skb-loaded' + (!skill.disabled ? ' skb-loaded--yes' : ''), text: (!skill.disabled ? '● ' : '○ ') + (!skill.disabled ? t('status.enabled') : t('disabled.badge')) }),
           switchEl(skill)))
     }
 
@@ -704,7 +703,7 @@ window.__ModuleLoader__.load({
         // toolbar
         var c = counts()
         var tabs = el('div', { class: 'skb-tabs', role: 'tablist' },
-          [['all', 'tab.all'], ['global', 'tab.global'], ['project', 'tab.project'], ['disabled', 'tab.disabled'], ['warn', 'tab.warn'], ['unloaded', 'tab.unloaded']].map(function (pair) {
+          [['all', 'tab.all'], ['global', 'tab.global'], ['project', 'tab.project'], ['disabled', 'tab.disabled'], ['warn', 'tab.warn']].map(function (pair) {
             return el('button', { class: 'skb-tab' + (S.tab === pair[0] ? ' skb-tab--active' : ''), type: 'button', role: 'tab', text: t(pair[1]) + ' ', onclick: function () { setState({ tab: pair[0] }) } },
               el('span', { class: 'skb-count', text: c[pair[0]] || 0 }))
           }))
