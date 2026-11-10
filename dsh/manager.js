@@ -95,133 +95,39 @@ export class SkillsManager {
     return null
   }
 
-  /** Loaded status from the host skills registry (cached 2s). */
-  async loadedNames() {
+  /**
+   * Read the CURRENT session's user-invocable skill catalog. This is the only
+   * loaded view we claim: per-cwd probes cannot see preset skill layers, and
+   * enumerating every stored session was the wrong level of abstraction.
+   */
+  async loadedNames(sessionId) {
     const now = Date.now()
-    if (now - this._loadedCache.at < 2000) return this._loadedCache.names
+    if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === sessionId) return this._loadedCache.names
     const names = new Set()
-    const debug = { service: false, cwds: [], results: [], total: 0 }
-    try {
-      const skills = this.ctx.get('skills')
-      if (skills && typeof skills.list === 'function') {
-        debug.service = true
-        // The registry collects per cwd: a root-context read sees nothing.
-        // Probe every project root plus each live session's cwd and union.
-        const cwds = new Set()
-        for (const root of this.roots()) {
-          if (root.scope === 'project') cwds.add(path.dirname(root.dir))
+    const debug = { sessionId: sessionId || null, catalogPresent: false, count: 0, error: null }
+    const catalog = this.ctx.get('sessionSkillCatalog')
+    debug.catalogPresent = !!catalog
+    if (catalog && sessionId) {
+      try {
+        const value = await catalog.list({ sessionId })
+        const list = value && Array.isArray(value.skills) ? value.skills : []
+        debug.count = list.length
+        for (const entry of list) {
+          if (entry && typeof entry.name === 'string') names.add(entry.name)
         }
-        // Registered workspaces are the real project directories whose agents
-        // load skills; root-level session headers only name the profile dir.
-        try {
-          const registry = this.ctx.workspaceRegistry
-          if (registry && typeof registry.list === 'function') {
-            for (const w of registry.list()) {
-              if (w && typeof w.path === 'string' && w.path) cwds.add(path.resolve(w.path))
-            }
-          }
-        } catch { /* registry unavailable */ }
-        try {
-          const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
-          for (const s of sessions) {
-            if (s && s.header && typeof s.header.cwd === 'string' && s.header.cwd && !s.header.cwd.includes('.dsh/profiles')) cwds.add(s.header.cwd)
-          }
-        } catch { /* sessions unavailable */ }
-        if (cwds.size === 0) cwds.add(process.cwd())
-        debug.cwds = [...cwds]
-        for (const cwd of cwds) {
-          try {
-            const listed = await skills.list({ cwd })
-            const count = Array.isArray(listed) ? listed.length : -1
-            debug.results.push(count)
-            for (const item of listed || []) {
-              if (item && typeof item.name === 'string') names.add(item.name)
-            }
-          } catch (error) {
-            debug.results.push('ERR:' + String((error && error.message) || error).slice(0, 60))
-          }
-        }
-        // Real session cwds: the persistence layer lists every stored session
-        // with its header (the in-process store only shows the root session).
-        try {
-          const persistence = this.ctx.sessionPersistence
-          if (persistence && typeof persistence.list === 'function') {
-            const snapshots = await persistence.list()
-            for (const snap of snapshots || []) {
-              const cwd = snap && snap.header && snap.header.cwd
-              if (typeof cwd === 'string' && cwd && !cwd.includes('/.dsh/')) cwds.add(cwd)
-            }
-          }
-        } catch (error) {
-          debug.persistenceErr = String((error && error.message) || error).slice(0, 80)
-        }
-        // Per-session catalog: the ONLY view that merges agent-preset skill
-        // layers (where ~/.agents/skills skills actually live).
-        try {
-          const catalog = this.ctx.get('sessionSkillCatalog')
-          debug.catalogPresent = !!catalog
-          // root-context sessions.list() is empty; source ids from persistence.
-          const sessionIds = new Set()
-          try {
-            const persistence = this.ctx.get('sessionPersistence')
-            if (persistence && typeof persistence.list === 'function') {
-              for (const snap of await persistence.list() || []) {
-                if (snap && snap.id) sessionIds.add(snap.id)
-              }
-            }
-          } catch (error) {
-            debug.persistErr = String((error && error.message) || error).slice(0, 80)
-          }
-          try {
-            const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
-            for (const s of sessions) { if (s && s.id) sessionIds.add(s.id) }
-          } catch { /* noop */ }
-          debug.sessionIds = sessionIds.size
-          let probed = 0
-          for (const sessionId of sessionIds) {
-            if (probed >= 8) break
-            probed += 1
-            try {
-              const value = await catalog.list({ sessionId })
-              const list = value && Array.isArray(value.skills) ? value.skills : []
-              debug.results.push('cat:' + list.length)
-              for (const entry of list) {
-                if (entry && typeof entry.name === 'string') names.add(entry.name)
-              }
-            } catch (error) {
-              debug.results.push('catERR:' + String((error && error.message) || error).slice(0, 60))
-            }
-          }
-          debug.probedSessions = probed
-        } catch (error) {
-          debug.catalogErr = String((error && error.message) || error).slice(0, 80)
-        }
-        debug.v = 3
-        for (const cwd of cwds) {
-          if (debug.cwds.includes(cwd)) continue
-          try {
-            const listed = await skills.list({ cwd })
-            debug.results.push('late:' + (Array.isArray(listed) ? listed.length : -1))
-            for (const item of listed || []) {
-              if (item && typeof item.name === 'string') names.add(item.name)
-            }
-          } catch (error) {
-            debug.results.push('lateERR:' + String((error && error.message) || error).slice(0, 60))
-          }
-        }
-        debug.cwds = [...cwds]
-        debug.total = names.size
+      } catch (error) {
+        debug.error = String((error && error.message) || error).slice(0, 160)
       }
-    } catch { /* registry unavailable: loaded column stays unknown */ }
+    }
     this._loadedDebug = debug
-    this._loadedCache = { at: now, names }
+    this._loadedCache = { at: now, sessionId, names }
     return names
   }
 
   /** Full panel payload: roots + enriched records + health + env + logs. */
-  async view() {
+  async view(sessionId) {
     const records = this.records()
-    const loaded = await this.loadedNames()
+    const loaded = await this.loadedNames(sessionId)
     const enriched = records.map((r) => {
       const probe = r.brokenLink ? { mtime: 0, description: '' } : safePeek(r)
       return {

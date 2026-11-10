@@ -62,6 +62,23 @@ const logs = manager.logs(50)
 assert.ok(logs.logs.some((l) => l.op === 'disable'))
 assert.ok(logs.logs.some((l) => l.op === 'remove'))
 
+// Regression: loaded status is read from the CURRENT session's catalog, not
+// from a root-context/cwd enumeration (which cannot see preset skill layers).
+{
+  const catalogCtx = {
+    get: (key) => key === 'sessionSkillCatalog' ? {
+      list: async ({ sessionId }) => ({ skills: sessionId === 's-current' ? [{ name: 'alpha' }, { name: 'gamma' }] : [] })
+    } : undefined,
+    sessions: { list: () => [] }
+  }
+  const probe = new SkillsManager(catalogCtx, { home })
+  assert.equal((await probe.loadedNames('s-current')).has('alpha'), true)
+  assert.equal((await probe.loadedNames('s-current')).has('gamma'), true)
+  probe._loadedCache.at = 0 // defeat cache for the no-session case
+  assert.equal((await probe.loadedNames(undefined)).size, 0)
+  probe.dispose()
+}
+
 // state persisted under DSH_HOME
 assert.ok(fs.existsSync(path.join(process.env.DSH_HOME, 'dsh-skills', 'state.json')))
 

@@ -341,6 +341,7 @@ window.__ModuleLoader__.load({
       health: null, logs: null, rootsSnapshot: null
     }
     var rootEl = null
+    var sessionIdProvider = function () { return null }
 
     function setState(patch) {
       for (var k in patch) S[k] = patch[k]
@@ -359,7 +360,8 @@ window.__ModuleLoader__.load({
     }
 
     function load() {
-      return api('/view').then(function (data) {
+      var sid = sessionIdProvider()
+      return api('/view' + (sid ? '?sessionId=' + encodeURIComponent(sid) : '')).then(function (data) {
         diag('view-ok', 'skills=' + (data.skills ? data.skills.length : '?') + ' loaded=' + (data.skills ? data.skills.filter(function (x) { return x.loaded }).length : '?') + ' dbg=' + JSON.stringify(data.loadedDebug || null).slice(0, 240))
         setState({ view: data, error: null })
         return data
@@ -825,6 +827,15 @@ window.__ModuleLoader__.load({
               if (loc && loc.id === 'en') currentLang = 'en'
             }
           } catch (e) { /* keep zh */ }
+          sessionIdProvider = function () {
+            try {
+              var store = ctx.sessions && ctx.sessions.list
+              var snap = store && store.getSnapshot()
+              var all = snap && snap.byId ? Object.values(snap.byId) : []
+              var current = all.find(function (s) { return s && s.retainedBy && s.retainedBy.mainView > 0 })
+              return current && current.id ? current.id : null
+            } catch (e) { return null }
+          }
           startSelfHost()
           load()
           return function () {

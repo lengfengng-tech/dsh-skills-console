@@ -63,7 +63,7 @@ export function registerRoutes(webServer, connection, manager) {
     disposers.push(dispose)
   }
 
-  route('/view', ['GET'], () => manager.view())
+  route('/view', ['GET'], (ctx) => manager.view(ctx.url.searchParams.get('sessionId') || undefined))
   route('/refresh', ['POST'], () => ({ ok: true, skills: manager.refresh() }))
   route('/detail', ['GET'], (ctx) => manager.detail(ctx.url.searchParams.get('name'), ctx.url.searchParams.get('dir') || undefined))
   route('/health', ['GET'], () => manager.health())
