@@ -21,6 +21,11 @@ export function apply(ctx, config = {}) {
     manager.dispose()
   }, 'skills-butler: dispose')
 
+  // New sessions inherit DSH-only disabled skills without touching disk.
+  ctx.on('agent/created', ({ agent }) => {
+    manager.onAgentCreated(agent)
+  })
+
   ctx.inject(['webServer'], (webCtx) => {
     ctx.inject(['connection'], (connCtx) => {
       try {

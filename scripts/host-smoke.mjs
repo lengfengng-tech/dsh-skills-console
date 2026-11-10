@@ -23,7 +23,22 @@ function makeSkill(root, name, fm) {
 makeSkill(path.join(home, '.agents', 'skills'), 'alpha', { name: 'alpha', description: 'first' })
 makeSkill(path.join(home, '.agents', 'skills'), 'beta', { name: 'beta', description: 'second' })
 
-const ctx = { get: () => undefined, sessions: { list: () => [] } }
+const registrations = []
+const agent = {
+  id: 'agent-1',
+  ctx: {
+    skills: {
+      register(skill) {
+        registrations.push(skill)
+        return () => { skill.disposed = true }
+      }
+    }
+  }
+}
+const ctx = {
+  get: (key) => key === 'agents' ? { list: () => [agent] } : undefined,
+  sessions: { list: () => [] }
+}
 const manager = new SkillsManager(ctx, { home, projectRoot: null })
 
 await manager.refresh()
@@ -33,18 +48,22 @@ const names = view.skills.map((s) => s.name).sort()
 assert.deepEqual(names, ['alpha', 'beta'])
 assert.ok(view.skills.every((s) => s.installedBy === 'foreign'), 'census marks foreign')
 
-// disable/enable round trip through the manager
+// DSH-only disable/enable: shared directories never move; the agent receives
+// an uninvocable tombstone, and undo disposes it.
 const rootDir = path.join(home, '.agents', 'skills')
 await manager.opDisable('alpha', path.join(rootDir, 'alpha'))
 view = await manager.view()
 const alpha = view.skills.find((s) => s.name === 'alpha')
 assert.equal(alpha.disabled, true)
-assert.ok(fs.existsSync(path.join(rootDir + '-disabled', 'alpha')))
+assert.ok(fs.existsSync(path.join(rootDir, 'alpha')), 'shared directory stays in place')
+assert.ok(!fs.existsSync(path.join(rootDir + '-disabled', 'alpha')), 'no global shadow move')
+assert.ok(registrations.some((r) => r.name === 'alpha' && r.invocation.modelInvocable === false && r.invocation.userInvocable === false))
 
-// undo re-enables
+// undo re-enables in DSH only
 await manager.opUndo()
 view = await manager.view()
 assert.equal(view.skills.find((s) => s.name === 'alpha').disabled, false)
+assert.ok(registrations.find((r) => r.name === 'alpha').disposed, 'tombstone disposed on enable')
 
 // remove with confirm + backup, then rollback via logged undo
 await manager.opRemove('beta', path.join(rootDir, 'beta'), { confirmed: true })

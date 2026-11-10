@@ -14,7 +14,7 @@ export const STATE_VERSION = 1
 export const SKILL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 export function defaultState() {
-  return { version: STATE_VERSION, skills: [], customRoots: [], backups: [], pinned: [], logs: [] }
+  return { version: STATE_VERSION, skills: [], customRoots: [], backups: [], pinned: [], logs: [], dshDisabled: [] }
 }
 
 function asString(value) { return typeof value === 'string' ? value : '' }
@@ -66,6 +66,7 @@ export function normalizeState(parsed) {
     }))
   }
   if (Array.isArray(parsed.pinned)) state.pinned = parsed.pinned.filter((x) => typeof x === 'string')
+  if (Array.isArray(parsed.dshDisabled)) state.dshDisabled = parsed.dshDisabled.filter((x) => typeof x === 'string')
   if (Array.isArray(parsed.logs)) {
     state.logs = parsed.logs.filter((e) => e && typeof e === 'object').map((e) => ({
       at: asNumber(e.at, 0),
@@ -239,7 +240,7 @@ export function mergeStates(base, incoming) {
   const customRoots = Array.from(new Set([...base.customRoots, ...incoming.customRoots]))
   const backups = incoming.backups.length ? incoming.backups : base.backups
   const pinned = Array.from(new Set([...base.pinned, ...incoming.pinned]))
-  return { version: STATE_VERSION, skills: [...byName.values()], customRoots, backups, pinned, logs: incoming.logs || base.logs || [] }
+  return { version: STATE_VERSION, skills: [...byName.values()], customRoots, backups, pinned, logs: incoming.logs || base.logs || [], dshDisabled: Array.isArray(incoming.dshDisabled) ? incoming.dshDisabled : (base.dshDisabled || []) }
 }
 
 function pickFresher(primary, secondary) {

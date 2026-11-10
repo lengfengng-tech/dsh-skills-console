@@ -46,20 +46,53 @@ export class SkillsManager {
     this._roots = null
     this._rootsAt = 0
     this._loadedCache = { at: 0, names: new Set() }
+    this._tombstones = new Map()
   }
 
   /** (Re)scan the world: discover roots, census, reconcile, persist. */
   refresh() {
+    this.migrateLegacyDisabled()
     const roots = this.roots()
     const disk = []
     for (const root of roots) {
       disk.push(...scanRoot(root), ...scanDisabledRoot(root))
     }
     const state = this.store.state()
-    const records = annotateCollisions(reconcile(disk, state.skills))
+    const disabled = new Set(state.dshDisabled || [])
+    const records = annotateCollisions(reconcile(disk, state.skills)).map((record) => ({
+      ...record,
+      disabled: disabled.has(record.name)
+    }))
     this.store.write({ ...state, skills: records })
     this._records = records
     return records
+  }
+
+  /**
+   * v0.1 moved disabled skills into *-disabled directories, which disabled
+   * them for every agent on the machine. Restore those dirs and carry the
+   * user's intent into dshDisabled: DSH-only, shared files untouched.
+   */
+  migrateLegacyDisabled() {
+    const state = this.store.state()
+    const disabledSet = new Set(state.dshDisabled || [])
+    let changed = false
+    const skills = state.skills.map((record) => {
+      if (!record.disabled) return record
+      const parent = path.dirname(record.dir)
+      if (!parent.endsWith('-disabled') || !fs.existsSync(record.dir)) return record
+      const root = parent.slice(0, -'-disabled'.length)
+      const target = path.join(root, record.name)
+      if (fs.existsSync(target)) return record
+      try {
+        fs.mkdirSync(root, { recursive: true })
+        fs.renameSync(record.dir, target)
+        disabledSet.add(record.name)
+        changed = true
+        return { ...record, dir: target, disabled: false }
+      } catch { return record }
+    })
+    if (changed) this.store.write({ ...state, skills, dshDisabled: [...disabledSet] })
   }
 
   records() {
@@ -135,7 +168,7 @@ export class SkillsManager {
         description: probe.description || '',
         mtime: probe.mtime || 0,
         loaded: loaded.has(r.name),
-        issues: r.health && r.health.issues ? r.health.issues : []
+        issues: checkSkill(r).issues
       }
     })
     const roots = this.roots().map((r) => ({
@@ -192,19 +225,65 @@ export class SkillsManager {
 
   async opDisable(name, dir) {
     const record = this.mustRecord(name, dir)
-    const result = await disableSkill(path.dirname(record.dir), name)
-    this.store.log({ op: 'disable', skill: name, undo: { op: 'enable', name, dir: record.dir } })
-    return this.finishMutation(result)
+    const state = this.store.state()
+    const dshDisabled = Array.from(new Set([...(state.dshDisabled || []), name]))
+    const skills = state.skills.map((s) => s.name === name ? { ...s, disabled: true } : s)
+    this.store.write({ ...state, dshDisabled, skills })
+    this.syncTombstones()
+    this.store.log({ op: 'disable', skill: name, message: '仅 DSH 停用', undo: { op: 'enable', name, dir: record.dir } })
+    return this.finishMutation({ name, disabled: true, scope: 'dsh-only' })
   }
 
   async opEnable(name, dir) {
     const record = this.mustRecord(name, dir)
-    const shadowDir = path.dirname(record.dir)
-    const stripped = shadowDir.endsWith('-disabled') ? shadowDir.slice(0, -'-disabled'.length) : null
-    const root = (stripped && stripped.length > 0) ? stripped : (liveRootFor(this.roots(), record) || shadowDir)
-    const result = await enableSkill(root, name)
-    this.store.log({ op: 'enable', skill: name, undo: { op: 'disable', name, dir: path.join(root, name) } })
-    return this.finishMutation(result)
+    const state = this.store.state()
+    const dshDisabled = (state.dshDisabled || []).filter((n) => n !== name)
+    const skills = state.skills.map((s) => s.name === name ? { ...s, disabled: false } : s)
+    this.store.write({ ...state, dshDisabled, skills })
+    this.syncTombstones()
+    this.store.log({ op: 'enable', skill: name, message: '仅 DSH 启用', undo: { op: 'disable', name, dir: record.dir } })
+    return this.finishMutation({ name, disabled: false, scope: 'dsh-only' })
+  }
+
+  /** Install/remove DSH-only invocation tombstones on live agents. */
+  syncTombstones() {
+    const disabled = new Set(this.store.state().dshDisabled || [])
+    let agents = []
+    try {
+      const service = this.ctx.get('agents')
+      if (service && typeof service.list === 'function') agents = service.list() || []
+    } catch { agents = [] }
+    for (const agent of agents) this.installAgentTombstones(agent, disabled)
+    for (const [key, dispose] of this._tombstones) {
+      const name = key.slice(key.indexOf('|') + 1)
+      if (!disabled.has(name)) {
+        try { dispose() } catch { /* noop */ }
+        this._tombstones.delete(key)
+      }
+    }
+  }
+
+  /** New agents inherit every current DSH-only disablement. */
+  onAgentCreated(agent) {
+    try { this.installAgentTombstones(agent, new Set(this.store.state().dshDisabled || [])) } catch { /* never block agent creation */ }
+  }
+
+  installAgentTombstones(agent, disabled) {
+    if (!agent || !agent.ctx || !agent.ctx.skills || typeof agent.ctx.skills.register !== 'function') return
+    for (const name of disabled) {
+      const key = String(agent.id || 'agent') + '|' + name
+      if (this._tombstones.has(key)) continue
+      try {
+        const dispose = agent.ctx.skills.register({
+          name,
+          description: 'Disabled in DeepSeek Harness by Skills Butler',
+          content: 'This skill is disabled in DeepSeek Harness by Skills Butler.',
+          source: 'dsh-skills-butler',
+          invocation: { modelInvocable: false, userInvocable: false }
+        })
+        this._tombstones.set(key, dispose)
+      } catch { /* duplicate runtime name or disposed agent: leave untouched */ }
+    }
   }
 
   async opRemove(name, dir, { confirmed = false, backup: takeBackup = true } = {}) {
@@ -373,6 +452,8 @@ export class SkillsManager {
   }
 
   dispose() {
+    for (const dispose of this._tombstones.values()) { try { dispose() } catch { /* noop */ } }
+    this._tombstones.clear()
     this.store.dispose()
   }
 }

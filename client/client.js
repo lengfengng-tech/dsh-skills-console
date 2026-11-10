@@ -67,15 +67,15 @@ window.__ModuleLoader__.load({
       zh: {
         'nav': '技能',
         'panel.title': '技能',
-        'panel.subtitle': '发现、安装并管理本机的 Agent 技能，覆盖 ~/.agents/skills、~/.claude/skills 与项目级目录。',
+        'panel.subtitle': '管理 Agent 技能；开关只控制 DSH 是否使用，不影响 Claude、Codex 等其他软件。',
         'action.refresh': '刷新', 'action.health': '体检', 'action.logs': '日志',
         'action.roots': '浏览目录', 'action.undo': '撤销上一步', 'action.add': '添加',
         'tab.all': '全部', 'tab.global': '全局', 'tab.project': '项目',
         'tab.disabled': '已停用', 'tab.warn': '有警告', 'status.enabled': '已启用',
         'search.placeholder': '搜索技能', 'list.empty': '没有匹配的技能', 'list.loading': '盘点中…', 'list.error': '加载失败',
-        'filter.agent': 'Agent', 'filter.agent.all': '全部', 'filter.origin': '来源', 'filter.origin.all': '全部',
+        'filter.agent': '目录', 'filter.agent.all': '全部', 'filter.origin': '来源', 'filter.origin.all': '全部',
         'scope.global': '全局', 'scope.project': '项目',
-        'origin.marketplace': '市场', 'origin.git': 'Git', 'origin.manual': '手动',
+        'origin.marketplace': '市场', 'origin.git': 'Git', 'origin.manual': '本地',
         'origin.symlink': '软链', 'origin.builtin': '内置',
         'loaded.yes': '已加载', 'loaded.no': '未加载',
         'foreign.badge': '非本插件安装',
@@ -120,15 +120,15 @@ window.__ModuleLoader__.load({
       en: {
         'nav': 'Skills',
         'panel.title': 'Skills',
-        'panel.subtitle': 'Discover, install, and manage agent skills across ~/.agents/skills, ~/.claude/skills, and project scopes.',
+        'panel.subtitle': 'Manage agent skills; switches control DSH only, never other agents such as Claude or Codex.',
         'action.refresh': 'Refresh', 'action.health': 'Health check', 'action.logs': 'Logs',
         'action.roots': 'Browse roots', 'action.undo': 'Undo last', 'action.add': 'Add',
         'tab.all': 'All', 'tab.global': 'Global', 'tab.project': 'Project',
         'tab.disabled': 'Disabled', 'tab.warn': 'Warnings', 'status.enabled': 'Enabled',
         'search.placeholder': 'Search skills', 'list.empty': 'No matching skills', 'list.loading': 'Inventory…', 'list.error': 'Failed to load',
-        'filter.agent': 'Agent', 'filter.agent.all': 'All', 'filter.origin': 'Origin', 'filter.origin.all': 'All',
+        'filter.agent': '目录', 'filter.agent.all': 'All', 'filter.origin': 'Origin', 'filter.origin.all': 'All',
         'scope.global': 'Global', 'scope.project': 'Project',
-        'origin.marketplace': 'Market', 'origin.git': 'Git', 'origin.manual': 'Manual',
+        'origin.marketplace': 'Market', 'origin.git': 'Git', 'origin.manual': 'Local',
         'origin.symlink': 'Symlink', 'origin.builtin': 'Builtin',
         'loaded.yes': 'Loaded', 'loaded.no': 'Not loaded',
         'foreign.badge': 'foreign',
@@ -437,7 +437,6 @@ window.__ModuleLoader__.load({
           el('div', { class: 'skb-row-name' },
             skill.name,
             skill.pinned ? el('span', { class: 'skb-badge', text: '📌' }) : null,
-            skill.installedBy === 'foreign' ? el('span', { class: 'skb-badge skb-badge--foreign', text: t('foreign.badge') }) : null,
             skill.disabled ? el('span', { class: 'skb-badge', text: t('disabled.badge') }) : null,
             skill.shadowed ? el('span', { class: 'skb-badge skb-badge--warn', text: t('shadowed.badge') }) : null,
             skill.issues && skill.issues.length > 0 ? el('span', { class: 'skb-badge skb-badge--error', text: '⚠ ' + skill.issues.length }) : null),
@@ -512,8 +511,7 @@ window.__ModuleLoader__.load({
           el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: t('drawer.uninstall'), onclick: function () { setState({ modal: 'confirm', confirmSkill: r }) } }),
           r.origin === 'symlink' ? el('button', { class: 'skb-btn', type: 'button', text: t('drawer.materialize'), onclick: function () { mutate('/ops/materialize', { name: skill.name, dir: skill.dir }).then(function () { setState({ selected: null }) }) } }) : null,
           r.origin === 'symlink' ? el('button', { class: 'skb-btn', type: 'button', text: t('drawer.unlink'), onclick: function () { mutate('/ops/unlink', { name: skill.name, dir: skill.dir }).then(function () { setState({ selected: null }) }) } }) : null,
-          el('button', { class: 'skb-btn', type: 'button', text: r.pinned ? t('drawer.unpin') : t('drawer.pin'), onclick: function () { mutate('/ops/pin', { name: skill.name, dir: skill.dir, pinned: !r.pinned }) } }),
-          el('button', { class: 'skb-btn', type: 'button', text: t('drawer.export'), onclick: function () { setState({ notice: { kind: 'ok', text: r.dir } }) } }))
+          el('button', { class: 'skb-btn', type: 'button', text: r.pinned ? t('drawer.unpin') : t('drawer.pin'), onclick: function () { mutate('/ops/pin', { name: skill.name, dir: skill.dir, pinned: !r.pinned }) } }))
       }
       var drawer = el('div', { class: 'skb-drawer', role: 'dialog' },
         el('div', { class: 'skb-drawer-head' }, cubeSvg(), el('h2', { class: 'skb-drawer-title', text: skill.name }),
@@ -702,8 +700,13 @@ window.__ModuleLoader__.load({
 
         // toolbar
         var c = counts()
+        var tabDefs = [['all', 'tab.all']]
+        if (c.project > 0) tabDefs.push(['global', 'tab.global'], ['project', 'tab.project'])
+        if (c.disabled > 0) tabDefs.push(['disabled', 'tab.disabled'])
+        if (c.warn > 0) tabDefs.push(['warn', 'tab.warn'])
+        if (S.tab !== 'all' && !tabDefs.some(function (pair) { return pair[0] === S.tab })) S.tab = 'all'
         var tabs = el('div', { class: 'skb-tabs', role: 'tablist' },
-          [['all', 'tab.all'], ['global', 'tab.global'], ['project', 'tab.project'], ['disabled', 'tab.disabled'], ['warn', 'tab.warn']].map(function (pair) {
+          tabDefs.map(function (pair) {
             return el('button', { class: 'skb-tab' + (S.tab === pair[0] ? ' skb-tab--active' : ''), type: 'button', role: 'tab', text: t(pair[1]) + ' ', onclick: function () { setState({ tab: pair[0] }) } },
               el('span', { class: 'skb-count', text: c[pair[0]] || 0 }))
           }))
@@ -717,7 +720,7 @@ window.__ModuleLoader__.load({
           origins.map(function (o) { return el('option', { value: o, text: t('origin.' + o), selected: S.originFilter === o || null }) }))
         var search = el('input', { class: 'skb-input skb-search', type: 'search', value: S.search, placeholder: t('search.placeholder'),
           oninput: function (e) { setState({ search: e.target.value }) } })
-        root.appendChild(el('div', { class: 'skb-toolbar' }, tabs, agentSel, originSel, search))
+        root.appendChild(el('div', { class: 'skb-toolbar' }, tabs, agentSel, search))
 
         // list
         var list = filtered()
