@@ -155,7 +155,31 @@ export class SkillsManager {
         } catch (error) {
           debug.persistenceErr = String((error && error.message) || error).slice(0, 80)
         }
-        debug.v = 2
+        // Per-session catalog: the ONLY view that merges agent-preset skill
+        // layers (where ~/.agents/skills skills actually live).
+        try {
+          const catalog = this.ctx.sessionSkillCatalog
+          const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
+          let probed = 0
+          for (const session of sessions) {
+            if (!session || !session.id || probed >= 8) continue
+            probed += 1
+            try {
+              const value = await catalog.list({ sessionId: session.id })
+              const list = value && Array.isArray(value.skills) ? value.skills : []
+              debug.results.push('cat:' + list.length)
+              for (const entry of list) {
+                if (entry && typeof entry.name === 'string') names.add(entry.name)
+              }
+            } catch (error) {
+              debug.results.push('catERR:' + String((error && error.message) || error).slice(0, 60))
+            }
+          }
+          debug.probedSessions = probed
+        } catch (error) {
+          debug.catalogErr = String((error && error.message) || error).slice(0, 80)
+        }
+        debug.v = 3
         for (const cwd of cwds) {
           if (debug.cwds.includes(cwd)) continue
           try {
