@@ -158,7 +158,8 @@ export class SkillsManager {
         // Per-session catalog: the ONLY view that merges agent-preset skill
         // layers (where ~/.agents/skills skills actually live).
         try {
-          const catalog = this.ctx.sessionSkillCatalog
+          const catalog = this.ctx.get('sessionSkillCatalog')
+          debug.catalogPresent = !!catalog
           const sessions = this.ctx.sessions && typeof this.ctx.sessions.list === 'function' ? this.ctx.sessions.list() : []
           let probed = 0
           for (const session of sessions) {
