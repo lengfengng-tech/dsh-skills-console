@@ -923,24 +923,48 @@ window.__ModuleLoader__.load({
           sync.screen !== 'settings' && sync.pushResults && sync.pushResults.length ? el('div', { class: 'skb-sync-results' },
             sync.pushResults.map(function (result) {
               const remote = sync.remotes.find((r) => r.id === result.remoteId)
-              return el('div', { class: 'skb-notice skb-notice--' + (result.ok ? 'ok' : 'error'), text: (remote ? remote.name : result.remoteId) + ' · ' + (result.ok ? (result.changed ? b('已推送', 'Pushed') : b('无变化', 'No changes')) : result.error) })
+              const summary = result.ok
+                ? (result.changed ? b('已增量推送', 'Pushed additions') : b('无新增', 'No additions')) + b(' · 新增 ', ' · added ') + (result.added || 0) + b(' · 保留同名 ', ' · kept same-name ') + (result.kept || 0) + b(' · 共 ', ' · total ') + (result.count || 0)
+                : result.error
+              return el('div', { class: 'skb-notice skb-notice--' + (result.ok ? 'ok' : 'error'), text: (remote ? remote.name : result.remoteId) + ' · ' + summary })
             })) : null,
           sync.screen !== 'settings' && sync.pullResults && sync.pullResults.length ? el('div', { class: 'skb-sync-results' },
             sync.pullResults.map(function (result) {
               const remote = sync.remotes.find((r) => r.id === result.remoteId)
               if (!result.ok) return el('div', { class: 'skb-notice skb-notice--error', text: (remote ? remote.name : result.remoteId) + ' · ' + result.error })
               const skills = result.manifest.skills || []
+              const missing = skills.filter(function (item) { return item.localStatus === 'missing' })
               return el('div', null,
-                el('h3', { class: 'skb-section-title', text: (remote ? remote.name : result.remoteId) + ' · ' + skills.length + b(' 个技能', ' skills') }),
+                el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' } },
+                  el('h3', { class: 'skb-section-title', text: (remote ? remote.name : result.remoteId) + b(' · 新增 ', ' · missing ') + missing.length + b(' · 已存在跳过 ', ' · existing skipped ') + (skills.length - missing.length) }),
+                  el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: b('安装全部新增', 'Install all missing'), disabled: !!sync.busy || missing.length === 0, onclick: function () {
+                    S.sync.busy = true; render()
+                    api('/sync/install', { items: missing.map(function (item) { return { name: item.name, install: item.install } }) }).then(function (installed) {
+                      const byName = new Map((installed.results || []).map(function (row) { return [row.name, row] }))
+                      const nextResults = S.sync.pullResults.map(function (row) {
+                        if (row.remoteId !== result.remoteId || !row.ok) return row
+                        const nextSkills = row.manifest.skills.map(function (item) {
+                          const outcome = byName.get(item.name)
+                          if (!outcome) return item
+                          return { ...item, localStatus: outcome.status === 'installed' || outcome.status === 'skipped' ? 'existing' : item.localStatus, installStatus: outcome.status, installError: outcome.error }
+                        })
+                        return { ...row, manifest: { ...row.manifest, skills: nextSkills }, installSummary: installed }
+                      })
+                      setState({ sync: { ...S.sync, busy: false, pullResults: nextResults } })
+                      load()
+                    }).catch(function (e) { setState({ sync: { ...S.sync, busy: false, error: e.message } }) })
+                  } })),
+                result.installSummary ? el('div', { class: 'skb-notice skb-notice--' + (result.installSummary.ok ? 'ok' : 'error'), text: b('增量安装：新增 ', 'Incremental install: added ') + result.installSummary.installed + b('，跳过 ', ', skipped ') + result.installSummary.skipped + b('，失败 ', ', failed ') + result.installSummary.failed }) : null,
                 skills.length === 0 ? el('div', { class: 'skb-empty', text: t('sync.empty') }) : null,
                 skills.map(function (item) {
+                  const label = item.installStatus === 'installed' ? b('本次已安装', 'Installed now')
+                    : item.installStatus === 'error' ? b('安装失败', 'Install failed')
+                    : item.localStatus === 'existing' ? b('已存在 · 跳过', 'Existing · skipped') : b('待安装', 'Missing')
                   return el('div', { class: 'skb-market-row' },
                     el('div', { class: 'skb-market-main' },
                       el('div', { class: 'skb-market-ref', text: item.name }),
-                      el('div', { class: 'skb-market-meta', text: item.install + (item.url ? ' · ' + item.url : '') })),
-                    el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('sync.install'), onclick: function () {
-                      mutate('/cli/add', { pkg: item.install, scope: 'global' })
-                    } }))
+                      el('div', { class: 'skb-market-meta', text: item.install + (item.installError ? ' · ' + item.installError : '') })),
+                    el('span', { class: 'skb-badge', text: label }))
                 }))
             })) : null)
         return modalShell(sync.screen === 'settings' ? b('同步设置', 'Sync settings') : t('sync.title'), body)

@@ -184,23 +184,68 @@ export function parseManifest(text) {
   return { version: MANIFEST_VERSION, source: data.source || 'unknown', generatedAt: data.generatedAt || null, skills }
 }
 
-/** Explicit remote write: clone, replace manifest, commit if changed, push. */
+// Non-destructive union: remote rows win same-name conflicts and local rows
+// only fill missing names. Multiple machines can push without deleting or
+// overwriting each other's entries.
+export function mergeManifests(remoteManifest, localManifest) {
+  const remote = parseManifest(JSON.stringify(remoteManifest || { version: MANIFEST_VERSION, skills: [] }))
+  const local = parseManifest(JSON.stringify(localManifest || { version: MANIFEST_VERSION, skills: [] }))
+  const byName = new Map(remote.skills.map((skill) => [skill.name, skill]))
+  const kept = []
+  const added = []
+  for (const skill of local.skills) {
+    if (byName.has(skill.name)) {
+      kept.push(skill.name)
+      continue
+    }
+    byName.set(skill.name, skill)
+    added.push(skill.name)
+  }
+  return {
+    manifest: {
+      version: MANIFEST_VERSION,
+      source: remote.source || local.source,
+      generatedAt: new Date().toISOString(),
+      skills: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
+    },
+    added,
+    kept,
+    count: byName.size
+  }
+}
+
+/** Explicit remote write: pull, merge additions, then commit and push. */
 export async function pushManifest({ cacheRoot, remote, credential, records }) {
   const dir = await ensureCheckout(cacheRoot, remote, credential)
   const { args, env, secrets } = gitOptions(remote, credential)
-  const manifest = manifestFromRecords(records)
+  const localManifest = manifestFromRecords(records)
   const file = path.join(dir, MANIFEST_FILE)
-  const text = JSON.stringify(manifest, null, 2) + '\n'
-  const previous = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null
-  if (previous === text) return { ok: true, changed: false, count: manifest.skills.length, remoteId: remote.id }
+  let previous = { version: MANIFEST_VERSION, skills: [] }
+  if (fs.existsSync(file)) {
+    try {
+      const text = fs.readFileSync(file, 'utf8')
+      const raw = JSON.parse(text)
+      previous = parseManifest(text)
+      if (!Array.isArray(raw.skills) || raw.skills.length !== previous.skills.length) {
+        throw new SyncError('unsupported-remote-entry', '远端清单含无法识别或重复的条目')
+      }
+    } catch (error) {
+      throw new SyncError('bad-remote-manifest', '远端清单无效，已停止推送以避免覆盖：' + error.message)
+    }
+  }
+  const merged = mergeManifests(previous, localManifest)
+  if (JSON.stringify(previous.skills) === JSON.stringify(merged.manifest.skills)) {
+    return { ok: true, changed: false, count: merged.count, added: 0, kept: merged.kept.length, remoteId: remote.id }
+  }
+  const text = JSON.stringify(merged.manifest, null, 2) + '\n'
   await fs.promises.writeFile(file, text, 'utf8')
   const add = await run('git', ['-C', dir, 'add', MANIFEST_FILE], { env })
   if (!add.ok) throw new SyncError('stage-failed', redact(add.stderr, secrets))
-  const commit = await run('git', ['-C', dir, 'commit', '-m', `Update DSH skill manifest (${manifest.skills.length} skills)`], { env })
+  const commit = await run('git', ['-C', dir, 'commit', '-m', `Add ${merged.added.length} skills incrementally`], { env })
   if (!commit.ok) throw new SyncError('commit-failed', redact(commit.stderr || commit.stdout, secrets))
   const pushed = await run('git', ['-C', dir, ...args, 'push'], { env, timeout: 120000 })
   if (!pushed.ok) throw new SyncError('push-failed', redact(pushed.stderr || pushed.stdout, secrets))
-  return { ok: true, changed: true, count: manifest.skills.length, remoteId: remote.id }
+  return { ok: true, changed: true, count: merged.count, added: merged.added.length, kept: merged.kept.length, remoteId: remote.id }
 }
 
 /** Pull and validate only; installation remains a separate explicit action. */

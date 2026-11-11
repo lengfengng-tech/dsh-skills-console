@@ -58,7 +58,12 @@ fs.mkdirSync(path.join(home, '.claude', 'skills'), { recursive: true })
 makeSkill(path.join(home, '.claude', 'skills'), 'gamma', { name: 'gamma', description: 'external' })
 
 const registry = createRegistry(async () => [candidate('alpha', 500), candidate('beta', 500)])
-const ctx = { get: () => undefined, sessions: { list: () => [] } }
+const emitted = []
+const ctx = {
+  get: (key) => key === 'agentPresets' ? { inspectCompositions: () => [{ id: 'standard' }] } : undefined,
+  emit: (...args) => emitted.push(args),
+  sessions: { list: () => [] }
+}
 const manager = new SkillsManager(ctx, { home, projectRoot: null })
 manager.onAgentCreated(makeAgent('global-agent', null, registry))
 
@@ -82,12 +87,17 @@ assert.ok(registry.runtime.has('alpha'))
 assert.deepEqual((await registry.api.list({})).map((row) => row.name).sort(), ['alpha', 'beta'], 'unrelated filesystem skill is not hidden')
 assert.equal((await registry.api.list({})).find((row) => row.name === 'beta').invocation.userInvocable, true)
 assert.equal((await registry.api.list({})).find((row) => row.name === 'alpha').invocation.userInvocable, false)
+assert.deepEqual(emitted.at(-1), ['agent-preset/selected', 'global-agent', 'standard'], 'toggle invalidates the packaged composer cache')
+const emissionsAfterDisable = emitted.length
+await manager.opDisable('alpha', path.join(rootDir, 'alpha'))
+assert.equal(emitted.length, emissionsAfterDisable, 'an unchanged toggle does not spam cache invalidations')
 
 await manager.opUndo()
 view = await manager.view()
 assert.equal(view.skills.find((s) => s.name === 'alpha').disabled, false)
 assert.equal(view.skills.find((s) => s.name === 'alpha').loaded, true)
 assert.equal(registry.runtime.has('alpha'), false, 'enable disposes only the alpha runtime entry')
+assert.deepEqual(emitted.at(-1), ['agent-preset/selected', 'global-agent', 'standard'], 'enable also refreshes the composer catalog')
 
 await manager.opRemove('beta', path.join(rootDir, 'beta'), { confirmed: true })
 assert.ok(!fs.existsSync(path.join(rootDir, 'beta')))
@@ -99,6 +109,25 @@ assert.equal(health.report.total, 1)
 const logs = manager.logs(50)
 assert.ok(logs.logs.some((l) => l.op === 'disable'))
 assert.ok(logs.logs.some((l) => l.op === 'remove'))
+
+{
+  const installCalls = []
+  manager.cli.add = async (pkg) => {
+    installCalls.push(pkg)
+    makeSkill(rootDir, 'beta', { name: 'beta', description: 'restored incrementally' })
+    return { ok: true, stdout: '', stderr: '' }
+  }
+  const syncInstalled = await manager.syncInstall([
+    { name: 'alpha', install: 'owner/skills@alpha' },
+    { name: 'beta', install: 'owner/skills@beta' },
+    { name: 'beta', install: 'owner/skills@beta' }
+  ])
+  assert.equal(syncInstalled.installed, 1)
+  assert.equal(syncInstalled.skipped, 1)
+  assert.equal(syncInstalled.failed, 0)
+  assert.deepEqual(installCalls, ['owner/skills@beta'], 'existing skills never reach the installer')
+  assert.equal(syncInstalled.results.find((row) => row.name === 'alpha').status, 'skipped')
+}
 
 // Global and project rows are independent. A global disable leaves a project
 // override callable in that project, while disabling it in other projects.

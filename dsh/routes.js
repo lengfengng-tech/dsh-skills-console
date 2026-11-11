@@ -105,6 +105,7 @@ export function registerRoutes(webServer, connection, manager) {
   route('/sync/test', ['POST'], (ctx) => manager.syncTest(ctx.body.remoteId))
   route('/sync/push', ['POST'], (ctx) => manager.syncPush(ctx.body.remoteIds))
   route('/sync/pull', ['POST'], (ctx) => manager.syncPull(ctx.body.remoteIds))
+  route('/sync/install', ['POST'], (ctx) => manager.syncInstall(ctx.body.items))
 
   route('/backups', ['GET'], () => manager.backups())
   route('/backups/prune', ['POST'], () => manager.prune())

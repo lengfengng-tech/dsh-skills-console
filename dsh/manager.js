@@ -13,7 +13,7 @@ import {
   reconcile, annotateCollisions, healthReport, readSkillBody, peekSkill,
   disableSkill, enableSkill, removeSkill, linkSkill, unlinkSkill, materializeSkill,
   backupSkill, rollbackSkill, pruneBackups, listBackups,
-  SkillsCli, OpError, pushManifest, pullManifest, Marketplace, validateSources, validateRemotes, testRemote
+  SkillsCli, OpError, pushManifest, pullManifest, parseManifest, Marketplace, validateSources, validateRemotes, testRemote
 } from '../core/index.js'
 import { checkSkill, previewFix } from '../core/health.js'
 
@@ -369,10 +369,12 @@ export class SkillsManager {
     for (const item of state.dshProjectDisabled || []) {
       if (cwd && withinRoot(cwd, item.projectRoot)) desired.add(item.name)
     }
+    let changed = false
     for (const [name, dispose] of entry.disposers) {
       if (desired.has(name)) continue
       try { dispose() } catch { /* already disposed */ }
       entry.disposers.delete(name)
+      changed = true
     }
     for (const name of desired) {
       if (entry.disposers.has(name)) continue
@@ -384,6 +386,25 @@ export class SkillsManager {
         invocation: { modelInvocable: false, userInvocable: false }
       })
       entry.disposers.set(name, dispose)
+      changed = true
+    }
+    if (changed) this.invalidateComposerCatalog(entry.agent)
+  }
+
+  // Packaged ui-skill clears its composer cache on the forwarded
+  // agent-preset/selected event, not skills/change. Re-emitting the CURRENT
+  // preset is only an invalidation signal: it appends no session event and
+  // never switches presets, while both open and future /skill menus refetch.
+  invalidateComposerCatalog(agent) {
+    try {
+      const presets = this.ctx.get && this.ctx.get('agentPresets')
+      const current = presets && presets.inspectCompositions
+        ? presets.inspectCompositions(agent.ctx)[0]
+        : undefined
+      const presetId = (current && current.id) || (presets && presets.defaultId) || 'standard'
+      this.ctx.emit('agent-preset/selected', agent.id, presetId)
+    } catch (error) {
+      this.store.log({ op: 'composer-invalidate', message: String((error && error.message) || error), status: 'error' })
     }
   }
 
@@ -704,20 +725,52 @@ export class SkillsManager {
     return { ok: results.every((r) => r.ok), results }
   }
 
-  /** Pull and validate only; the user chooses what to install. */
+  /** Pull and annotate only; installation is a separate explicit action. */
   async syncPull(remoteIds) {
     const remotes = this.selectedRemotes(remoteIds)
     if (!remotes.length) return { ok: false, reason: '请先配置并选择至少一个远端', results: [] }
+    const localNames = new Set(this.records().map((record) => record.name))
     const results = await Promise.all(remotes.map(async (remote) => {
       try {
-        const manifest = await pullManifest({ cacheRoot: path.join(managerDir(), 'sync'), remote, credential: this.credentialFor(remote) })
-        return { ok: true, remoteId: remote.id, manifest }
+        const pulled = await pullManifest({ cacheRoot: path.join(managerDir(), 'sync'), remote, credential: this.credentialFor(remote) })
+        const skills = pulled.skills.map((skill) => ({ ...skill, localStatus: localNames.has(skill.name) ? 'existing' : 'missing' }))
+        const missingCount = skills.filter((skill) => skill.localStatus === 'missing').length
+        return { ok: true, remoteId: remote.id, manifest: { ...pulled, skills }, missingCount, existingCount: skills.length - missingCount }
       } catch (error) {
         return { ok: false, remoteId: remote.id, error: error.message || String(error) }
       }
     }))
     this.store.log({ op: 'sync-pull', message: results.map((r) => r.remoteId + ':' + (r.ok ? 'ok' : 'error')).join(',') })
     return { ok: results.every((r) => r.ok), results }
+  }
+
+  /** Install only names absent locally; existing skills are never overwritten. */
+  async syncInstall(items) {
+    const manifest = parseManifest(JSON.stringify({ version: 1, skills: Array.isArray(items) ? items.slice(0, 50) : [] }))
+    const localNames = new Set(this.records().map((record) => record.name))
+    const results = []
+    for (const skill of manifest.skills) {
+      if (localNames.has(skill.name)) {
+        results.push({ name: skill.name, status: 'skipped', reason: '本地已存在，未覆盖' })
+        continue
+      }
+      try {
+        const result = await this.cliAdd(skill.install, { scope: 'global' })
+        if (result.ok) {
+          localNames.add(skill.name)
+          results.push({ name: skill.name, status: 'installed' })
+        } else {
+          results.push({ name: skill.name, status: 'error', error: result.error || '安装失败' })
+        }
+      } catch (error) {
+        results.push({ name: skill.name, status: 'error', error: error.message || String(error) })
+      }
+    }
+    const installed = results.filter((result) => result.status === 'installed').length
+    const skipped = results.filter((result) => result.status === 'skipped').length
+    const failed = results.filter((result) => result.status === 'error').length
+    this.store.log({ op: 'sync-install', message: `新增 ${installed}，跳过 ${skipped}，失败 ${failed}` })
+    return { ok: failed === 0, installed, skipped, failed, results }
   }
 
   dispose() {

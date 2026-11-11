@@ -7,9 +7,13 @@ import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 
 const core = await import('../core/index.js')
+
+function run(command, args) {
+  return execFileSync(command, args, { encoding: 'utf8' }).trim()
+}
 
 const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'dsh-skills-core-'))
 const home = path.join(tmp, 'home')
@@ -279,6 +283,24 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   assert.deepEqual(withBad.skills.map((s) => s.name), ['ok'])
 }
 
+// --- incremental, remote-first manifest merge ---
+{
+  const remoteManifest = core.manifestFromRecords([
+    { name: 'shared', sourceRef: 'owner/shared@remote', origin: 'marketplace' },
+    { name: 'remote-only', sourceRef: 'owner/remote@1', origin: 'marketplace' }
+  ])
+  const localManifest = core.manifestFromRecords([
+    { name: 'shared', sourceRef: 'owner/shared@local', origin: 'marketplace' },
+    { name: 'local-only', sourceRef: 'owner/local@1', origin: 'marketplace' }
+  ])
+  const merged = core.mergeManifests(remoteManifest, localManifest)
+  assert.equal(merged.added.length, 1)
+  assert.equal(merged.kept.length, 1)
+  assert.deepEqual(merged.manifest.skills.map((skill) => skill.name).sort(), ['local-only', 'remote-only', 'shared'])
+  assert.equal(merged.manifest.skills.find((skill) => skill.name === 'shared').install, 'owner/shared@remote', 'same-name entries keep the remote source')
+  assert.equal(core.mergeManifests(merged.manifest, merged.manifest).added.length, 0)
+}
+
 // --- market source configuration ---
 {
   const defaults = core.validateSources([])
@@ -317,10 +339,48 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   ] })
   assert.equal(pushed.ok, true)
   assert.equal(pushed.count, 1)
+  const incrementalRecords = [
+    { name: 'tdd', sourceRef: 'mattpocock/skills@tdd', origin: 'marketplace' },
+    { name: 'extra', sourceRef: 'owner/skills@extra', origin: 'marketplace' }
+  ]
+  const incremental = await core.pushManifest({ cacheRoot: path.join(tmp, 'sync-c'), remote, records: incrementalRecords })
+  assert.equal(incremental.changed, true)
+  assert.equal(incremental.added, 1)
+  assert.equal(incremental.kept, 1)
+  assert.equal(incremental.count, 2)
+  const noOp = await core.pushManifest({ cacheRoot: path.join(tmp, 'sync-d'), remote, records: incrementalRecords })
+  assert.equal(noOp.changed, false, 'timestamp-only changes do not create commits')
+  assert.equal(noOp.added, 0)
   const pulled = await core.pullManifest({ cacheRoot: path.join(tmp, 'sync-b'), remote })
-  assert.equal(pulled.skills[0].install, 'mattpocock/skills@tdd')
+  assert.deepEqual(pulled.skills.map((skill) => skill.name).sort(), ['extra', 'tdd'])
   const connected = await core.testRemote({ remote })
   assert.equal(connected.ok, true)
+
+  const badWork = path.join(tmp, 'bad-work')
+  run('git', ['clone', 'file://' + bare, badWork])
+  run('git', ['-C', badWork, 'config', 'user.name', 'Skills Test'])
+  run('git', ['-C', badWork, 'config', 'user.email', 'skills@example.invalid'])
+  await fsp.writeFile(path.join(badWork, 'skills.json'), '{broken')
+  run('git', ['-C', badWork, 'add', 'skills.json'])
+  run('git', ['-C', badWork, 'commit', '-m', 'Break remote manifest'])
+  run('git', ['-C', badWork, 'push'])
+  const beforeRejectedPush = run('git', ['--git-dir', bare, 'rev-parse', 'HEAD'])
+  await assert.rejects(
+    core.pushManifest({ cacheRoot: path.join(tmp, 'sync-e'), remote, records: incrementalRecords }),
+    /已停止推送以避免覆盖/
+  )
+  assert.equal(run('git', ['--git-dir', bare, 'rev-parse', 'HEAD']), beforeRejectedPush, 'an invalid remote manifest is never overwritten')
+
+  await fsp.writeFile(path.join(badWork, 'skills.json'), JSON.stringify({ version: 1, skills: [{ name: 'broken', install: 'not-a-valid-source' }] }))
+  run('git', ['-C', badWork, 'add', 'skills.json'])
+  run('git', ['-C', badWork, 'commit', '-m', 'Add unsupported remote entry'])
+  run('git', ['-C', badWork, 'push'])
+  const beforeUnsupportedPush = run('git', ['--git-dir', bare, 'rev-parse', 'HEAD'])
+  await assert.rejects(
+    core.pushManifest({ cacheRoot: path.join(tmp, 'sync-f'), remote, records: incrementalRecords }),
+    /已停止推送以避免覆盖/
+  )
+  assert.equal(run('git', ['--git-dir', bare, 'rev-parse', 'HEAD']), beforeUnsupportedPush, 'unsupported remote entries are not silently dropped')
 }
 
 await fsp.rm(tmp, { recursive: true, force: true })
