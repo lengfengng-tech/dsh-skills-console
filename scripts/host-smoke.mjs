@@ -22,6 +22,9 @@ function makeSkill(root, name, fm) {
 }
 makeSkill(path.join(home, '.agents', 'skills'), 'alpha', { name: 'alpha', description: 'first' })
 makeSkill(path.join(home, '.agents', 'skills'), 'beta', { name: 'beta', description: 'second' })
+// An external agent skill is importable but does not enter the DSH main list.
+fs.mkdirSync(path.join(home, '.claude', 'skills'), { recursive: true })
+makeSkill(path.join(home, '.claude', 'skills'), 'gamma', { name: 'gamma', description: 'external' })
 
 const registrations = []
 const agent = {
@@ -46,6 +49,7 @@ let view = await manager.view()
 assert.equal(view.ok, true)
 const names = view.skills.map((s) => s.name).sort()
 assert.deepEqual(names, ['alpha', 'beta'])
+assert.ok(view.externalSkills.some((s) => s.name === 'gamma' && s.sourceAgent === 'claude'), 'external skill is importable')
 assert.ok(view.skills.every((s) => s.installedBy === 'foreign'), 'census marks foreign')
 
 // DSH-only disable/enable: shared directories never move; the agent receives
@@ -96,6 +100,19 @@ assert.ok(logs.logs.some((l) => l.op === 'remove'))
   probe._loadedCache.at = 0 // defeat cache for the no-session case
   assert.equal((await probe.loadedNames(undefined)).size, 0)
   probe.dispose()
+}
+
+// Importing an external skill creates a DSH symlink and preserves provenance.
+{
+  const target = path.join(home, '.claude', 'skills', 'gamma')
+  await manager.opLink('gamma', target, undefined, 'claude')
+  view = await manager.view()
+  const imported = view.skills.find((s) => s.name === 'gamma')
+  assert.ok(imported, 'imported skill joins the DSH list')
+  assert.equal(imported.sourceRef, 'external:claude')
+  assert.equal(imported.linkedFrom, fs.realpathSync(target))
+  assert.ok(fs.lstatSync(path.join(rootDir, 'gamma')).isSymbolicLink())
+  assert.ok(!view.externalSkills.some((s) => s.name === 'gamma'), 'imported skill no longer external')
 }
 
 // state persisted under DSH_HOME

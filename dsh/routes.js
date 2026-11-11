@@ -71,7 +71,7 @@ export function registerRoutes(webServer, connection, manager) {
   route('/ops/disable', ['POST'], (ctx) => manager.opDisable(ctx.body.name, ctx.body.dir))
   route('/ops/enable', ['POST'], (ctx) => manager.opEnable(ctx.body.name, ctx.body.dir))
   route('/ops/remove', ['POST'], (ctx) => manager.opRemove(ctx.body.name, ctx.body.dir, { confirmed: !!ctx.body.confirmed, backup: ctx.body.backup !== false }))
-  route('/ops/link', ['POST'], (ctx) => manager.opLink(ctx.body.name, ctx.body.target, ctx.body.rootDir))
+  route('/ops/link', ['POST'], (ctx) => manager.opLink(ctx.body.name, ctx.body.target, ctx.body.rootDir, ctx.body.sourceAgent))
   route('/ops/unlink', ['POST'], (ctx) => manager.opUnlink(ctx.body.name, ctx.body.dir))
   route('/ops/materialize', ['POST'], (ctx) => manager.opMaterialize(ctx.body.name, ctx.body.dir))
   route('/ops/pin', ['POST'], (ctx) => manager.opPin(ctx.body.name, ctx.body.dir, ctx.body.pinned))

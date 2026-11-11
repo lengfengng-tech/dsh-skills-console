@@ -52,7 +52,7 @@ export class SkillsManager {
   /** (Re)scan the world: discover roots, census, reconcile, persist. */
   refresh() {
     this.migrateLegacyDisabled()
-    const roots = this.roots()
+    const roots = this.roots({ force: true })
     const disk = []
     for (const root of roots) {
       disk.push(...scanRoot(root), ...scanDisabledRoot(root))
@@ -157,11 +157,24 @@ export class SkillsManager {
     return names
   }
 
-  /** Full panel payload: roots + enriched records + health + env + logs. */
+  /** Full panel payload: DSH-local skills + importable external skills. */
   async view(sessionId) {
     const records = this.records()
     const loaded = await this.loadedNames(sessionId)
-    const enriched = records.map((r) => {
+    const dshNames = new Set(records.filter((r) => r.agent === 'agents').map((r) => r.name))
+    const externalByName = new Map()
+    for (const record of records) {
+      if (record.agent === 'agents' || dshNames.has(record.name) || record.disabled) continue
+      if (!externalByName.has(record.name)) externalByName.set(record.name, record)
+    }
+    const externalSkills = [...externalByName.values()].map((r) => ({
+      name: r.name,
+      dir: r.dir,
+      sourceAgent: r.agent,
+      description: safePeek(r).description || '',
+      brokenLink: !!r.brokenLink
+    }))
+    const enriched = records.filter((r) => r.agent === 'agents').map((r) => {
       const probe = r.brokenLink ? { mtime: 0, description: '' } : safePeek(r)
       return {
         ...r,
@@ -171,7 +184,7 @@ export class SkillsManager {
         issues: checkSkill(r).issues
       }
     })
-    const roots = this.roots().map((r) => ({
+    const roots = this.roots().filter((r) => r.agent === 'agents').map((r) => ({
       dir: r.dir, scope: r.scope, agent: r.agent, standard: r.standard,
       present: r.kind === 'dir', readable: r.readable, writable: r.writable
     }))
@@ -180,6 +193,7 @@ export class SkillsManager {
       at: Date.now(),
       roots,
       skills: enriched,
+      externalSkills,
       env: this.cli.available(),
       loadedDebug: this._loadedDebug || null,
       lockfiles: this.lockfiles(),
@@ -218,7 +232,7 @@ export class SkillsManager {
   }
 
   health() {
-    return { ok: true, report: healthReport(this.records()) }
+    return { ok: true, report: healthReport(this.records().filter((r) => r.agent === 'agents')) }
   }
 
   // ---- operations (each logs with an undo entry) ----
@@ -302,10 +316,20 @@ export class SkillsManager {
     return this.finishMutation({ ...result, backup: backupEntry ? backupEntry.dir : null })
   }
 
-  async opLink(name, target, rootDir) {
+  async opLink(name, target, rootDir, sourceAgent) {
     const root = rootDir || defaultRootDir(this.roots(), 'global', 'agents')
     const result = await linkSkill(root, name, target)
-    this.store.updateSkill(name, (s) => ({ ...s, origin: 'symlink', linkedFrom: result.target, installedBy: 'dsh-skills', installedAt: Date.now() }))
+    // Census first creates the new DSH row; annotate that exact directory, not
+    // the same-named external row we imported from.
+    this.refresh()
+    this.store.updateSkill(name, (s) => s.dir === result.link ? ({
+      ...s,
+      origin: result.via === 'copy' ? 'manual' : 'symlink',
+      linkedFrom: result.target,
+      sourceRef: sourceAgent ? 'external:' + sourceAgent : s.sourceRef,
+      installedBy: 'dsh-skills',
+      installedAt: Date.now()
+    }) : s)
     this.store.log({ op: 'link', skill: name, message: result.via, undo: { op: 'unlink', name, dir: path.join(root, name) } })
     return this.finishMutation(result)
   }
@@ -467,10 +491,8 @@ function safePeek(record) {
 }
 
 function defaultRootDir(roots, scope, agent) {
-  const root = roots.find((r) => r.scope === scope && r.agent === agent && r.kind === 'dir')
+  const root = roots.find((r) => r.scope === scope && r.agent === agent)
   if (root) return root.dir
-  const any = roots.find((r) => r.kind === 'dir' && r.scope === scope)
-  if (any) return any.dir
   return path.join(os.homedir(), '.agents', 'skills')
 }
 

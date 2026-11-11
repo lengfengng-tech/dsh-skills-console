@@ -67,7 +67,10 @@ window.__ModuleLoader__.load({
       zh: {
         'nav': '技能',
         'panel.title': '技能',
-        'panel.subtitle': '管理 Agent 技能；开关只控制 DSH 是否使用，不影响 Claude、Codex 等其他软件。',
+        'panel.subtitle': '只展示 DSH 可使用的本地技能；从其他 Agent 引入时通过软链接入，并标记来源。',
+        'add.external': '从其他 Agent 引入', 'external.title': '从其他 Agent 引入到 DSH',
+        'external.import': '引入', 'external.empty': '没有可引入的其他 Agent 技能',
+        'source.externalPrefix': '来自 ',
         'action.refresh': '刷新', 'action.health': '体检', 'action.logs': '日志',
         'action.roots': '浏览目录', 'action.undo': '撤销上一步', 'action.add': '添加',
         'tab.all': '全部', 'tab.global': '全局', 'tab.project': '项目',
@@ -120,7 +123,10 @@ window.__ModuleLoader__.load({
       en: {
         'nav': 'Skills',
         'panel.title': 'Skills',
-        'panel.subtitle': 'Manage agent skills; switches control DSH only, never other agents such as Claude or Codex.',
+        'panel.subtitle': 'Only DSH-usable local skills; imports from other agents use symlinks and keep their source.',
+        'add.external': 'Import from another agent', 'external.title': 'Import another agent’s skills into DSH',
+        'external.import': 'Import', 'external.empty': 'No importable skills from other agents',
+        'source.externalPrefix': 'from ',
         'action.refresh': 'Refresh', 'action.health': 'Health check', 'action.logs': 'Logs',
         'action.roots': 'Browse roots', 'action.undo': 'Undo last', 'action.add': 'Add',
         'tab.all': 'All', 'tab.global': 'Global', 'tab.project': 'Project',
@@ -443,10 +449,10 @@ window.__ModuleLoader__.load({
           el('span', { class: 'skb-row-desc', text: skill.description || skill.dir }),
           el('div', { class: 'skb-badges' },
             el('span', { class: 'skb-badge', text: t('scope.' + skill.scope) }),
-            el('span', { class: 'skb-badge', text: skill.agent }),
+            /^external:(.+)$/.test(skill.sourceRef || '') ? el('span', { class: 'skb-badge', text: t('source.externalPrefix') + /^external:(.+)$/.exec(skill.sourceRef)[1] }) : null,
             el('span', { class: 'skb-badge', text: t('origin.' + skill.origin) }))),
         el('div', { class: 'skb-row-side' },
-          el('span', { class: 'skb-loaded' + (!skill.disabled ? ' skb-loaded--yes' : ''), text: (!skill.disabled ? '● ' : '○ ') + (!skill.disabled ? t('status.enabled') : t('disabled.badge')) }),
+          el('span', { class: 'skb-loaded' + (skill.loaded ? ' skb-loaded--yes' : ''), text: (skill.loaded ? '● ' : '○ ') + (skill.loaded ? t('loaded.yes') : t('loaded.no')) }),
           switchEl(skill)))
     }
 
@@ -595,6 +601,22 @@ window.__ModuleLoader__.load({
               mutate('/ops/link', { name: name, target: S.localForm.target })
             } }))))
       }
+      if (S.modal === 'external') {
+        var external = (S.view && S.view.externalSkills) || []
+        return modalShell(t('external.title'), el('div', null,
+          external.length === 0 ? el('div', { class: 'skb-empty', text: t('external.empty') }) : null,
+          external.map(function (item) {
+            return el('div', { class: 'skb-market-row' },
+              el('div', { class: 'skb-market-main' },
+                el('div', { class: 'skb-market-ref', text: item.name }),
+                el('div', { class: 'skb-market-meta', text: t('source.externalPrefix') + item.sourceAgent + ' · ' + (item.description || item.dir) })),
+              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('external.import'), onclick: function () {
+                mutate('/ops/link', { name: item.name, target: item.dir, sourceAgent: item.sourceAgent }).then(function (r) {
+                  if (r) setState({ modal: null })
+                })
+              } }))
+          })))
+      }
       if (S.modal === 'roots') {
         var roots = S.rootsSnapshot || (S.view && S.view.roots) || []
         return modalShell(t('roots.title'), el('div', null,
@@ -647,6 +669,7 @@ window.__ModuleLoader__.load({
       return el('div', { class: 'skb-menu', role: 'menu' },
         el('button', { type: 'button', text: t('add.market'), onclick: function () { setState({ modal: 'market', market: { query: '', rows: [], searched: false, installing: null } }) } }),
         el('button', { type: 'button', text: t('add.local'), onclick: function () { setState({ modal: 'local', localForm: { target: '', name: '' } }) } }),
+        el('button', { type: 'button', text: t('add.external'), onclick: function () { setState({ modal: 'external' }) } }),
         el('button', { type: 'button', text: t('add.root'), onclick: function () {
           var dir = window.prompt(t('add.root') + ' — path')
           if (dir) mutate('/roots/add', { dir: dir })
@@ -710,17 +733,9 @@ window.__ModuleLoader__.load({
             return el('button', { class: 'skb-tab' + (S.tab === pair[0] ? ' skb-tab--active' : ''), type: 'button', role: 'tab', text: t(pair[1]) + ' ', onclick: function () { setState({ tab: pair[0] }) } },
               el('span', { class: 'skb-count', text: c[pair[0]] || 0 }))
           }))
-        var agents = Array.from(new Set(view.skills.map(function (s) { return s.agent })))
-        var agentSel = el('select', { class: 'skb-select', onchange: function (e) { setState({ agentFilter: e.target.value }) } },
-          el('option', { value: 'all', text: t('filter.agent') + ': ' + t('filter.agent.all') }),
-          agents.map(function (a) { return el('option', { value: a, text: a, selected: S.agentFilter === a || null }) }))
-        var origins = ['marketplace', 'git', 'manual', 'symlink', 'builtin']
-        var originSel = el('select', { class: 'skb-select', onchange: function (e) { setState({ originFilter: e.target.value }) } },
-          el('option', { value: 'all', text: t('filter.origin') + ': ' + t('filter.origin.all') }),
-          origins.map(function (o) { return el('option', { value: o, text: t('origin.' + o), selected: S.originFilter === o || null }) }))
         var search = el('input', { class: 'skb-input skb-search', type: 'search', value: S.search, placeholder: t('search.placeholder'),
           oninput: function (e) { setState({ search: e.target.value }) } })
-        root.appendChild(el('div', { class: 'skb-toolbar' }, tabs, agentSel, search))
+        root.appendChild(el('div', { class: 'skb-toolbar' }, tabs, search))
 
         // list
         var list = filtered()
@@ -869,7 +884,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    exports.inject = ['slots', 'locale']
+    exports.inject = ['slots', 'locale', 'sessions']
     exports.apply = apply
     return module.exports
   }

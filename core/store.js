@@ -228,14 +228,12 @@ function hashState(state) {
 /** Merge two normalized states without dropping unknown remote rows. */
 export function mergeStates(base, incoming) {
   const byName = new Map()
-  for (const skill of base.skills) byName.set(skill.name, skill)
+  for (const skill of base.skills) byName.set(skill.name + '|' + skill.dir, skill)
   for (const skill of incoming.skills) {
-    const existing = byName.get(skill.name)
-    if (!existing) {
-      byName.set(skill.name, skill)
-      continue
-    }
-    byName.set(skill.name, (existing.installedAt || 0) >= (skill.installedAt || 0) ? { ...skill, ...pickFresher(existing, skill) } : { ...existing, ...pickFresher(skill, existing) })
+    const key = skill.name + '|' + skill.dir
+    // Incoming rows are authoritative for their identity; base only contributes
+    // rows unknown to this writer. Never let freshness discard edited fields.
+    byName.set(key, skill)
   }
   const customRoots = Array.from(new Set([...base.customRoots, ...incoming.customRoots]))
   const backups = incoming.backups.length ? incoming.backups : base.backups
