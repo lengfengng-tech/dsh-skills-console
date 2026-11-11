@@ -37,6 +37,9 @@ const DEFAULT_CONFIG = {
   cliTimeoutMs: 60000
 }
 
+const DISABLE_PROJECT_RANK = 150 // outranks project-agents (200)
+const DISABLE_GLOBAL_RANK = 250  // outranks user-agents (500), not project skills
+
 export class SkillsManager {
   constructor(ctx, config = {}) {
     this.ctx = ctx
@@ -46,8 +49,10 @@ export class SkillsManager {
     this.marketplace = new Marketplace(this.cli)
     this._roots = null
     this._rootsAt = 0
-    this._loadedCache = { at: 0, names: new Set() }
-    this._tombstones = new Map()
+    this._loadedCache = { at: 0, sessionId: null, value: { global: new Set(), project: new Set(), debug: {} } }
+    this._skillProviderControl = null
+    this._skillProviderDispose = null
+    this.installSkillProvider()
   }
 
   /** (Re)scan the world: discover roots, census, reconcile, persist. */
@@ -59,10 +64,9 @@ export class SkillsManager {
       disk.push(...scanRoot(root), ...scanDisabledRoot(root))
     }
     const state = this.store.state()
-    const disabled = new Set(state.dshDisabled || [])
     const records = annotateCollisions(reconcile(disk, state.skills)).map((record) => ({
       ...record,
-      disabled: disabled.has(record.name)
+      disabled: this.isRecordDisabled(record, state)
     }))
     this.store.write({ ...state, skills: records })
     this._records = records
@@ -134,10 +138,30 @@ export class SkillsManager {
     return null
   }
 
+  projectRootFor(record) {
+    if (record.scope !== 'project') return null
+    const resolved = path.resolve(record.dir)
+    const marker = path.sep + '.agents' + path.sep + 'skills' + path.sep
+    const index = resolved.lastIndexOf(marker)
+    if (index > 0) return resolved.slice(0, index)
+    const current = this.resolveProjectRoot()
+    if (current) {
+      const relative = path.relative(path.resolve(current), resolved)
+      if (relative && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) return path.resolve(current)
+    }
+    return null
+  }
+
+  isRecordDisabled(record, state = this.store.state()) {
+    if (record.scope !== 'project') return (state.dshDisabled || []).includes(record.name)
+    const projectRoot = this.projectRootFor(record)
+    return !!projectRoot && (state.dshProjectDisabled || []).some((entry) =>
+      entry.name === record.name && path.resolve(entry.projectRoot) === path.resolve(projectRoot))
+  }
+
   /**
-   * Read the CURRENT session's user-invocable skill catalog. This is the only
-   * loaded view we claim: per-cwd probes cannot see preset skill layers, and
-   * enumerating every stored session was the wrong level of abstraction.
+   * Global loaded status comes from the root registry and is session-independent.
+   * Project status uses the active/latest session catalog for cwd + preset context.
    */
   currentAgentSessionId() {
     try {
@@ -170,12 +194,31 @@ export class SkillsManager {
     }
   }
 
-  async loadedNames(sessionId) {
+  async loadedCatalogs(sessionId) {
     const now = Date.now()
-    if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === (sessionId || this.currentAgentSessionId())) return this._loadedCache.names
-    const names = new Set()
-    const effectiveId = sessionId || this.currentAgentSessionId() || await this.latestStoredSessionId()
-    const debug = { sessionId: sessionId || null, effectiveId: effectiveId || null, catalogPresent: false, count: 0, error: null }
+    const requestedId = sessionId || this.currentAgentSessionId()
+    if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === requestedId) return this._loadedCache.value
+    const global = new Set()
+    const project = new Set()
+    const effectiveId = requestedId || await this.latestStoredSessionId()
+    const debug = {
+      sessionId: sessionId || null, effectiveId: effectiveId || null,
+      globalCatalogPresent: false, catalogPresent: false,
+      globalCount: 0, count: 0, error: null
+    }
+    const registry = this.ctx.get('skills')
+    debug.globalCatalogPresent = !!registry
+    if (registry && typeof registry.list === 'function') {
+      try {
+        const list = await registry.list({})
+        debug.globalCount = list.length
+        for (const entry of list) {
+          if (entry && typeof entry.name === 'string' && entry.invocation?.userInvocable !== false) global.add(entry.name)
+        }
+      } catch (error) {
+        debug.error = String((error && error.message) || error).slice(0, 160)
+      }
+    }
     const catalog = this.ctx.get('sessionSkillCatalog')
     debug.catalogPresent = !!catalog
     if (catalog && effectiveId) {
@@ -184,15 +227,16 @@ export class SkillsManager {
         const list = value && Array.isArray(value.skills) ? value.skills : []
         debug.count = list.length
         for (const entry of list) {
-          if (entry && typeof entry.name === 'string') names.add(entry.name)
+          if (entry && typeof entry.name === 'string') project.add(entry.name)
         }
       } catch (error) {
         debug.error = String((error && error.message) || error).slice(0, 160)
       }
     }
+    const value = { global, project, debug }
     this._loadedDebug = debug
-    this._loadedCache = { at: now, sessionId: effectiveId, names }
-    return names
+    this._loadedCache = { at: now, sessionId: requestedId, value }
+    return value
   }
 
   /** Group DSH-local records by name; newest mtime is the preferred source. */
@@ -200,8 +244,9 @@ export class SkillsManager {
     const byName = new Map()
     for (const record of this.records()) {
       if (record.agent !== 'agents') continue
-      if (!byName.has(record.name)) byName.set(record.name, [])
-      byName.get(record.name).push(record)
+      const key = record.name + '|' + record.scope
+      if (!byName.has(key)) byName.set(key, [])
+      byName.get(key).push(record)
     }
     return [...byName.values()].map((group) => {
       const sorted = group.slice().sort((a, b) => {
@@ -238,7 +283,7 @@ export class SkillsManager {
         ...preferred,
         mtime: preferred.brokenLink ? 0 : safePeek(preferred).mtime || 0,
         conflict: sources.length > 1,
-        shadowed: group.some((s) => s.scope === 'project') && preferred.scope === 'global',
+        shadowed: this.records().some((s) => s.name === preferred.name && s.scope === 'project') && preferred.scope === 'global',
         sources
       }
     })
@@ -247,7 +292,7 @@ export class SkillsManager {
   /** Full panel payload: DSH-local skills + importable external skills. */
   async view(sessionId) {
     const records = this.records()
-    const loaded = await this.loadedNames(sessionId)
+    const catalogs = await this.loadedCatalogs(sessionId)
     const dshNames = new Set(records.filter((r) => r.agent === 'agents').map((r) => r.name))
     const externalByName = new Map()
     for (const record of records) {
@@ -267,7 +312,7 @@ export class SkillsManager {
         ...preferred,
         description: probe.description || '',
         mtime: probe.mtime || 0,
-        loaded: !preferred.disabled && loaded.has(preferred.name),
+        loaded: !preferred.disabled && (preferred.scope === 'project' ? catalogs.project : catalogs.global).has(preferred.name),
         issues: checkSkill(preferred).issues
       }
     })
@@ -327,66 +372,81 @@ export class SkillsManager {
   async opDisable(name, dir) {
     const record = this.mustRecord(name, dir)
     const state = this.store.state()
-    const dshDisabled = Array.from(new Set([...(state.dshDisabled || []), name]))
-    const skills = state.skills.map((s) => s.name === name ? { ...s, disabled: true } : s)
-    this.store.write({ ...state, dshDisabled, skills })
+    const isProject = record.scope === 'project'
+    const projectRoot = isProject ? this.projectRootFor(record) : null
+    if (isProject && !projectRoot) throw new OpError('project-root-required', '无法确定该技能所属项目')
+    const dshDisabled = isProject ? (state.dshDisabled || []) : Array.from(new Set([...(state.dshDisabled || []), name]))
+    const dshProjectDisabled = isProject && !(state.dshProjectDisabled || []).some((entry) => entry.name === name && path.resolve(entry.projectRoot) === path.resolve(projectRoot))
+      ? [...(state.dshProjectDisabled || []), { name, projectRoot: path.resolve(projectRoot) }]
+      : (state.dshProjectDisabled || [])
+    const skills = state.skills.map((s) => isProject
+      ? (s.dir === record.dir ? { ...s, disabled: true } : s)
+      : (s.name === name && s.scope !== 'project' ? { ...s, disabled: true } : s))
+    this.store.write({ ...state, dshDisabled, dshProjectDisabled, skills })
     this.syncTombstones()
-    this.store.log({ op: 'disable', skill: name, message: '仅 DSH 停用', undo: { op: 'enable', name, dir: record.dir } })
-    return this.finishMutation({ name, disabled: true, scope: 'dsh-only' })
+    this.store.log({ op: 'disable', skill: name, message: isProject ? '仅当前项目停用' : '全局停用，对所有会话立即生效', undo: { op: 'enable', name, dir: record.dir } })
+    return this.finishMutation({ name, disabled: true, scope: isProject ? 'dsh-project' : 'dsh-global' })
   }
 
   async opEnable(name, dir) {
     const record = this.mustRecord(name, dir)
     const state = this.store.state()
-    const dshDisabled = (state.dshDisabled || []).filter((n) => n !== name)
-    const skills = state.skills.map((s) => s.name === name ? { ...s, disabled: false } : s)
-    this.store.write({ ...state, dshDisabled, skills })
+    const isProject = record.scope === 'project'
+    const projectRoot = isProject ? this.projectRootFor(record) : null
+    const dshDisabled = isProject ? (state.dshDisabled || []) : (state.dshDisabled || []).filter((n) => n !== name)
+    const dshProjectDisabled = isProject
+      ? (state.dshProjectDisabled || []).filter((entry) => !(entry.name === name && projectRoot && path.resolve(entry.projectRoot) === path.resolve(projectRoot)))
+      : (state.dshProjectDisabled || [])
+    const skills = state.skills.map((s) => isProject
+      ? (s.dir === record.dir ? { ...s, disabled: false } : s)
+      : (s.name === name && s.scope !== 'project' ? { ...s, disabled: false } : s))
+    this.store.write({ ...state, dshDisabled, dshProjectDisabled, skills })
     this.syncTombstones()
-    this.store.log({ op: 'enable', skill: name, message: '仅 DSH 启用', undo: { op: 'disable', name, dir: record.dir } })
-    return this.finishMutation({ name, disabled: false, scope: 'dsh-only' })
+    this.store.log({ op: 'enable', skill: name, message: isProject ? '仅当前项目启用' : '全局启用，对所有会话立即生效', undo: { op: 'disable', name, dir: record.dir } })
+    return this.finishMutation({ name, disabled: false, scope: isProject ? 'dsh-project' : 'dsh-global' })
   }
 
-  /** Install/remove DSH-only invocation tombstones on live agents. */
+  /** Invalidate the root skill registry; all live and future agents see it immediately. */
   syncTombstones() {
-    const disabled = new Set(this.store.state().dshDisabled || [])
-    let agents = []
-    try {
-      const service = this.ctx.get('agents')
-      if (service && typeof service.list === 'function') agents = service.list() || []
-    } catch { agents = [] }
-    for (const agent of agents) this.installAgentTombstones(agent, disabled)
-    for (const [key, dispose] of this._tombstones) {
-      const name = key.slice(key.indexOf('|') + 1)
-      if (!disabled.has(name)) {
-        try { dispose() } catch { /* noop */ }
-        this._tombstones.delete(key)
+    if (this._skillProviderControl) this._skillProviderControl.invalidate()
+    this._loadedCache.at = 0
+  }
+
+  installSkillProvider() {
+    const registry = this.ctx.get('skills')
+    if (!registry || typeof registry.registerProvider !== 'function') return
+    const candidate = (name, rank, projectRoot = null) => {
+      const definition = {
+        name,
+        description: 'Disabled in DeepSeek Harness by Skills Butler',
+        content: 'This skill is disabled in DeepSeek Harness by Skills Butler.',
+        source: 'runtime',
+        invocation: { modelInvocable: false, userInvocable: false }
       }
+      return { name, description: definition.description, rank, source: 'runtime', provider: 'dsh-skills-butler-disabled', invocation: definition.invocation, projectRoot, locator: definition }
     }
-  }
-
-  /** New agents inherit every current DSH-only disablement. */
-  onAgentCreated(agent) {
-    try { this.installAgentTombstones(agent, new Set(this.store.state().dshDisabled || [])) } catch { /* never block agent creation */ }
-  }
-
-  installAgentTombstones(agent, disabled) {
-    if (!agent || !agent.ctx || typeof agent.ctx.get !== 'function') return
-    const skills = agent.ctx.get('skills')
-    if (!skills || typeof skills.register !== 'function') return
-    for (const name of disabled) {
-      const key = String(agent.id || 'agent') + '|' + name
-      if (this._tombstones.has(key)) continue
-      try {
-        const dispose = skills.register({
-          name,
-          description: 'Disabled in DeepSeek Harness by Skills Butler',
-          content: 'This skill is disabled in DeepSeek Harness by Skills Butler.',
-          source: 'dsh-skills-butler',
-          invocation: { modelInvocable: false, userInvocable: false }
-        })
-        this._tombstones.set(key, dispose)
-      } catch { /* duplicate runtime name or disposed agent: leave untouched */ }
-    }
+    const manager = this
+    this._skillProviderDispose = registry.registerProvider((control) => {
+      this._skillProviderControl = control
+      return {
+        name: 'dsh-skills-butler-disabled',
+        async list(options = {}) {
+          const state = manager.store.state()
+          const candidates = (state.dshDisabled || []).map((name) => candidate(name, DISABLE_GLOBAL_RANK))
+          const cwd = options.cwd ? path.resolve(options.cwd) : null
+          for (const entry of state.dshProjectDisabled || []) {
+            if (!cwd) continue
+            const root = path.resolve(entry.projectRoot)
+            const relative = path.relative(root, cwd)
+            if (relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
+              candidates.push(candidate(entry.name, DISABLE_PROJECT_RANK, root))
+            }
+          }
+          return candidates
+        },
+        async get(item) { return item.locator }
+      }
+    })
   }
 
   async opRemove(name, dir, { confirmed = false, backup: takeBackup = true } = {}) {
@@ -551,9 +611,6 @@ export class SkillsManager {
   mustRecord(name, dir) {
     const records = this.records()
     let record = records.find((r) => r.name === name && (!dir || r.dir === dir))
-    // After a disable the row's dir moves into the *-disabled shadow dir, so
-    // an undo entry captured pre-move still resolves by name.
-    if (!record && dir) record = records.find((r) => r.name === name)
     if (!record) throw new OpError('not-found', '未找到技能：' + String(name))
     return record
   }
@@ -704,8 +761,9 @@ export class SkillsManager {
   }
 
   dispose() {
-    for (const dispose of this._tombstones.values()) { try { dispose() } catch { /* noop */ } }
-    this._tombstones.clear()
+    if (this._skillProviderDispose) { try { this._skillProviderDispose() } catch { /* noop */ } }
+    this._skillProviderDispose = null
+    this._skillProviderControl = null
     this.store.dispose()
   }
 }

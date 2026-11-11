@@ -5,7 +5,7 @@ import { SkillsManager } from './manager.js'
 import { registerRoutes } from './routes.js'
 
 export const name = 'skills-butler'
-export const inject = ['sessions', 'workspaceRegistry', 'sessionSkillCatalog', 'sessionPersistence']
+export const inject = ['skills', 'sessions', 'workspaceRegistry', 'sessionSkillCatalog', 'sessionPersistence']
 
 export function apply(ctx, config = {}) {
   const manager = new SkillsManager(ctx, config)
@@ -20,11 +20,6 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => () => {
     manager.dispose()
   }, 'skills-butler: dispose')
-
-  // New sessions inherit DSH-only disabled skills without touching disk.
-  ctx.on('agent/created', ({ agent }) => {
-    manager.onAgentCreated(agent)
-  })
 
   ctx.inject(['webServer'], (webCtx) => {
     ctx.inject(['connection'], (connCtx) => {

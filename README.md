@@ -24,11 +24,11 @@ Agent 技能（SKILL.md）现在散落在多处：`~/.agents/skills/`、`~/.clau
 |---|---|
 | 目录发现 | 自动探测 agents.md 标准（`~/.agents/skills`、项目级）与 Claude/Codex/Cursor 等约定目录，支持自定义根目录；探测不到的显示"未找到"而非报错 |
 | 无损盘点 | 首次运行扫描全部目录建档，无法判定来源的一律标记 `foreign`，一条不丢、不改 |
-| 列表管理 | 名称/来源/作用域/归属 agent/加载状态/置顶；作用域×来源×状态×agent×文本组合过滤；启用/停用（移入 `*-disabled/`）、真移除（二次确认+备份）、置顶 |
+| 列表管理 | 名称/来源/作用域/归属 agent/加载状态/置顶；组合过滤；全局启停对所有会话立即生效，项目启停只影响所属项目；均不移动技能文件，无需重启 |
 | 详情抽屉 | SKILL.md 预览（懒加载）、frontmatter 解析、健康报告、可用备份与一键回滚 |
-| 市场安装 | `npx skills find` 搜索 skills.sh，显示安装量/来源；安装量 < 100 醒目提示"社区验证不足"；检测到 `skills-lock.json` 时拒绝绕过 |
+| 市场安装 | `npx skills find` 搜索 skills.sh，显示安装量/来源；安装量 < 100 醒目提示"社区验证不足"；锁文件由官方 CLI 处理 |
 | 软链管理 | 添加/断开/转正（materialize）软链；目标必须含 SKILL.md，拒绝 `..`/根目录/不存在目标；Windows 无权限时降级 junction/拷贝并明确提示 |
-| 一键体检 | frontmatter 合法性、SKILL.md 缺失、空目录、失效软链、重名冲突（项目级覆盖全局标注）分级报告；修复一律先预览 diff 再确认 |
+| 一键体检 | frontmatter 合法性、SKILL.md 缺失、空目录、失效软链分级报告；重名和项目覆盖仅作提示，不计警告；修复一律先预览 diff 再确认 |
 | 更新与备份 | 更新前自动备份到 `~/.dsh/dsh-skills/backups/<name>@<ts>/`，保留策略默认每技能 10 份/30 天，可回滚 |
 | 操作日志 | `logs.jsonl` 记录全部操作，面板可查，支持撤销最近一步（软移除/恢复/链接类） |
 | CLI 降级 | node/npx 不可用时面板明确降级：市场安装/更新不可用，本地管理照常 |
@@ -76,7 +76,7 @@ dsh-skills-butler/
 
 - `npx skills` 支持 `add/remove/list/find/update/init/sync`；**没有 `check` 命令**，更新检查由 git 来源比对 remote 实现；
 - 参考插件 [dsh-mcp-tools](https://github.com/hxlog/dsh-mcp-tools) 验证了 `webServer.register` 路由 + connection 信任门 + store 原子写模式，本插件沿用；
-- DSH Host API 清单：`webServer.register`、`connection.requestRejection`、`ctx.sessions.list`、`ctx.skills.list`（已加载状态）、`ctx.effect`/`ctx.inject`（生命周期）、`settings.section` slot。
+- DSH Host API 清单：`webServer.register`、`connection.requestRejection`、`ctx.skills.registerProvider`（全局/项目启停与即时缓存失效）、`ctx.skills.list`、`sessionSkillCatalog`（项目加载状态）、`ctx.effect`/`ctx.inject`、`settings.section` slot。
 
 ## 配置
 

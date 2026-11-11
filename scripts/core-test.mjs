@@ -135,16 +135,22 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   const merged = store.read()
   assert.ok(merged.skills.some((s) => s.name === 'remote-row'), 'concurrent row preserved')
   assert.ok(merged.skills.find((s) => s.name === 'a').pinned)
+  store.write({ ...merged, dshProjectDisabled: [{ name: 'a', projectRoot: '/project-a' }] })
+  assert.deepEqual(store.read().dshProjectDisabled, [{ name: 'a', projectRoot: '/project-a' }])
+  store.write({ ...store.read(), dshProjectDisabled: [] })
+  assert.equal(store.read().dshProjectDisabled.length, 0, 'project enable is not resurrected by merge')
 
   // watcher fires on external change
   let watched = null
   const close = store.watch((next) => { watched = next })
-  const external = store.read()
-  external.customRoots = [path.join(tmp, 'watched-root')]
-  fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(external))
-  await new Promise((r) => setTimeout(r, 500))
+  const externalStore = new core.SkillStore(dir)
+  const external = externalStore.read()
+  externalStore.write({ ...external, customRoots: [path.join(tmp, 'watched-root')] })
+  const watchDeadline = Date.now() + 3000
+  while (!watched && Date.now() < watchDeadline) await new Promise((r) => setTimeout(r, 50))
   assert.ok(watched && watched.customRoots.includes(path.join(tmp, 'watched-root')))
   close()
+  externalStore.dispose()
   store.dispose()
 
   // broken state quarantined (renamed away, fresh defaults returned)

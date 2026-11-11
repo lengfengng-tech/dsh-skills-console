@@ -22,11 +22,11 @@ This plugin adds the human-facing layer: visible, manageable, recoverable.
 
 - **Adaptive root discovery** — agents.md standard + Claude/Codex/Cursor conventions + custom roots; missing dirs show "not found" instead of erroring.
 - **Lossless census** — first run archives every discovered skill; unknown origins are marked `foreign`; nothing dropped or rewritten.
-- **List management** — name/origin/scope/agent/loaded/pinned; combined filters; enable/disable (move to `*-disabled/`), real remove (confirm + backup), pin.
+- **List management** — name/origin/scope/agent/loaded/pinned; combined filters. Global toggles apply to every session immediately; project toggles affect only their owning project. Neither moves skill files nor requires a restart.
 - **Detail drawer** — lazy SKILL.md preview, frontmatter parse, health report, backups with one-click rollback.
-- **Market install** — `npx skills find` against skills.sh with install counts; < 100 installs triggers a weak-validation warning; refuses to bypass `skills-lock.json`.
+- **Market install** — `npx skills find` against skills.sh with install counts; < 100 installs triggers a weak-validation warning; lockfiles are handled by the official CLI.
 - **Symlinks** — add/detach/materialize; targets must contain SKILL.md; `..`/root/missing rejected; Windows degrades to junction/copy with an explicit note.
-- **Health check** — frontmatter validity, missing SKILL.md, empty dirs, dead symlinks, name conflicts (project shadowing global annotated); graded ✅/⚠️/❌ report; every fix is previewed before applying.
+- **Health check** — frontmatter validity, missing SKILL.md, empty dirs and dead symlinks are graded; duplicate names and project shadowing are informational, not warnings. Every fix is previewed before applying.
 - **Update & backup** — pre-update backups to `~/.dsh/dsh-skills/backups/<name>@<ts>/`; retention 10 per skill / 30 days (configurable); rollback supported.
 - **Operation log** — `logs.jsonl` for every op, viewable in the panel, with undo for the latest reversible step.
 - **Graceful CLI degradation** — without node/npx the panel says so; local management keeps working.
@@ -71,7 +71,7 @@ Research conclusions (verified 2026-11-05 against DSH 0.2.1-rc.5):
 
 - `npx skills` supports `add/remove/list/find/update/init/sync`; **there is no `check` command** — update checks compare git remotes instead;
 - the reference plugin [dsh-mcp-tools](https://github.com/hxlog/dsh-mcp-tools) validated the `webServer.register` route + connection trust gate + atomic store pattern reused here;
-- DSH host APIs used: `webServer.register`, `connection.requestRejection`, `ctx.sessions.list`, `ctx.skills.list` (loaded status), `ctx.effect`/`ctx.inject`, `settings.section` slot.
+- DSH host APIs used: `webServer.register`, `connection.requestRejection`, `ctx.skills.registerProvider` (global/project toggles and immediate cache invalidation), `ctx.skills.list`, `sessionSkillCatalog` (project loaded status), `ctx.effect`/`ctx.inject`, `settings.section` slot.
 
 ## Config
 
