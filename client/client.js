@@ -1004,12 +1004,7 @@ window.__ModuleLoader__.load({
             setState({ modal: 'roots', rootsSnapshot: null })
             load().then(function (d) { if (d) setState({ rootsSnapshot: d.roots }) })
           } }),
-          el('button', { class: 'skb-btn', type: 'button', text: t('action.undo'), onclick: function () {
-            mutate('/ops/undo', {}).then(function (r) {
-              setState({ notice: { kind: r ? 'ok' : 'warn', text: r ? t('notice.undoOk') : t('notice.undoNone') } })
-            })
-          } }),
-          el('button', { class: 'skb-btn', type: 'button', text: t('action.sync'), onclick: function () { setState({ modal: 'sync', sync: { repo: '', result: null, manifest: null, busy: false, remotes: [], remotesLoaded: false, selected: [], testResults: {}, pushResults: [], pullResults: [], form: null, editingId: null, error: null, notice: null } }) } }),
+                      el('button', { class: 'skb-btn', type: 'button', text: t('action.sync'), onclick: function () { setState({ modal: 'sync', sync: { repo: '', result: null, manifest: null, busy: false, remotes: [], remotesLoaded: false, selected: [], testResults: {}, pushResults: [], pullResults: [], form: null, editingId: null, error: null, notice: null } }) } }),
           el('div', { class: 'skb-relative' },
             el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('action.add') + ' ▾', onclick: function (e) {
               var menu = e.target.parentElement.querySelector('.skb-menu')
