@@ -91,8 +91,11 @@ export function registerRoutes(webServer, connection, manager) {
   route('/cli/update', ['POST'], (ctx) => manager.cliUpdate(ctx.body.names, { scope: ctx.body.scope || 'global' }))
   route('/cli/remove', ['POST'], (ctx) => manager.cliRemove(ctx.body.names, { scope: ctx.body.scope || 'global' }))
 
-  route('/sync/push', ['POST'], (ctx) => manager.syncPush(ctx.body.repo))
-  route('/sync/pull', ['POST'], (ctx) => manager.syncPull(ctx.body.repo))
+  route('/sync/remotes', ['GET'], () => ({ ok: true, remotes: manager.syncRemotes() }))
+  route('/sync/remotes', ['POST'], (ctx) => manager.saveSyncRemotes(ctx.body.remotes))
+  route('/sync/test', ['POST'], (ctx) => manager.syncTest(ctx.body.remoteId))
+  route('/sync/push', ['POST'], (ctx) => manager.syncPush(ctx.body.remoteIds))
+  route('/sync/pull', ['POST'], (ctx) => manager.syncPull(ctx.body.remoteIds))
 
   route('/backups', ['GET'], () => manager.backups())
   route('/backups/prune', ['POST'], () => manager.prune())

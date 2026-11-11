@@ -288,5 +288,33 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   assert.ok(!custom.some((s) => s.id === 'bad type'))
 }
 
+// --- multi-remote sync against real local bare repositories ---
+{
+  const remotes = core.validateRemotes([
+    { id: 'local', name: 'Local', type: 'file', url: 'file:///tmp/local.git' },
+    { id: 'local', name: 'Duplicate ignored', type: 'file', url: 'file:///tmp/other.git' },
+    { id: 'corp', name: 'Corp', type: 'gitlab', url: 'https://git.internal/team/skills.git', insecureSkipTls: true }
+  ])
+  assert.equal(remotes.length, 2)
+  assert.equal(remotes[1].insecureSkipTls, true)
+  const hidden = core.redact('https://user:secret@example.com/repo.git Authorization: Basic c2VjcmV0', ['secret'])
+  assert.ok(!hidden.includes('secret'))
+
+  const bare = path.join(tmp, 'bare.git')
+  await new Promise((resolve, reject) => {
+    execFile('git', ['init', '--bare', bare], (error, stdout, stderr) => error ? reject(stderr || error) : resolve(stdout))
+  })
+  const remote = { id: 'local', name: 'Local', type: 'file', url: 'file://' + bare, enabled: true }
+  const pushed = await core.pushManifest({ cacheRoot: path.join(tmp, 'sync-a'), remote, records: [
+    { name: 'tdd', sourceRef: 'mattpocock/skills@tdd', origin: 'marketplace' }
+  ] })
+  assert.equal(pushed.ok, true)
+  assert.equal(pushed.count, 1)
+  const pulled = await core.pullManifest({ cacheRoot: path.join(tmp, 'sync-b'), remote })
+  assert.equal(pulled.skills[0].install, 'mattpocock/skills@tdd')
+  const connected = await core.testRemote({ remote })
+  assert.equal(connected.ok, true)
+}
+
 await fsp.rm(tmp, { recursive: true, force: true })
 console.log('core tests: all assertions passed')

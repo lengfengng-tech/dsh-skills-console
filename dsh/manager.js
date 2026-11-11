@@ -13,7 +13,7 @@ import {
   reconcile, annotateCollisions, healthReport, readSkillBody, peekSkill,
   disableSkill, enableSkill, removeSkill, linkSkill, unlinkSkill, materializeSkill,
   backupSkill, rollbackSkill, pruneBackups, listBackups,
-  SkillsCli, OpError, pushManifest, pullManifest, Marketplace, validateSources
+  SkillsCli, OpError, pushManifest, pullManifest, Marketplace, validateSources, validateRemotes, testRemote
 } from '../core/index.js'
 import { checkSkill, previewFix } from '../core/health.js'
 
@@ -583,20 +583,88 @@ export class SkillsManager {
     return listed
   }
 
-  /** Explicit user action: push only a manifest, never skill files. */
-  async syncPush(repo) {
+  syncRemotesFile() { return path.join(managerDir(), 'sync-remotes.json') }
+  syncCredentialsFile() { return path.join(managerDir(), 'sync-credentials.json') }
+
+  readCredentials() {
+    try { return JSON.parse(fs.readFileSync(this.syncCredentialsFile(), 'utf8')) } catch { return {} }
+  }
+
+  syncRemotes() {
+    let remotes = []
+    try { remotes = validateRemotes(JSON.parse(fs.readFileSync(this.syncRemotesFile(), 'utf8'))) } catch { remotes = [] }
+    const credentials = this.readCredentials()
+    return remotes.map((remote) => ({ ...remote, hasCredential: !!credentials[remote.id] }))
+  }
+
+  saveSyncRemotes(input) {
+    const remotes = validateRemotes(input)
+    const credentials = this.readCredentials()
+    for (const raw of Array.isArray(input) ? input : []) {
+      if (!raw || !raw.id) continue
+      if (typeof raw.password === 'string' && raw.password) {
+        credentials[raw.id] = { username: raw.username || '', password: raw.password }
+      }
+    }
+    fs.mkdirSync(managerDir(), { recursive: true })
+    const temp = this.syncRemotesFile() + '.tmp-' + process.pid
+    fs.writeFileSync(temp, JSON.stringify(remotes, null, 2) + '\n', 'utf8')
+    fs.renameSync(temp, this.syncRemotesFile())
+    const credTemp = this.syncCredentialsFile() + '.tmp-' + process.pid
+    fs.writeFileSync(credTemp, JSON.stringify(credentials, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+    fs.renameSync(credTemp, this.syncCredentialsFile())
+    try { fs.chmodSync(this.syncCredentialsFile(), 0o600) } catch { /* best effort */ }
+    this.store.log({ op: 'sync-remotes', message: remotes.map((r) => r.id).join(',') })
+    return { ok: true, remotes: this.syncRemotes() }
+  }
+
+  credentialFor(remote) {
+    return this.readCredentials()[remote.id] || null
+  }
+
+  async syncTest(remoteId) {
+    const remote = this.syncRemotes().find((r) => r.id === remoteId)
+    if (!remote) return { ok: false, message: '远端不存在，请先保存配置' }
+    return testRemote({ remote, credential: this.credentialFor(remote) })
+  }
+
+  selectedRemotes(remoteIds) {
+    const enabled = this.syncRemotes().filter((r) => r.enabled)
+    if (!Array.isArray(remoteIds) || remoteIds.length === 0) return enabled
+    return enabled.filter((r) => remoteIds.includes(r.id))
+  }
+
+  /** Explicit user action: push manifests to every selected remote. */
+  async syncPush(remoteIds) {
+    const remotes = this.selectedRemotes(remoteIds)
+    if (!remotes.length) return { ok: false, reason: '请先配置并选择至少一个远端', results: [] }
     await this.enrichSources()
     const records = this.records().filter((r) => r.agent === 'agents')
-    const result = await pushManifest({ cacheRoot: path.join(managerDir(), 'sync'), repo, records })
-    this.store.log({ op: 'sync-push', message: repo + ' · ' + result.count + ' skills', status: 'ok' })
-    return result
+    const results = await Promise.all(remotes.map(async (remote) => {
+      try {
+        return await pushManifest({ cacheRoot: path.join(managerDir(), 'sync'), remote, credential: this.credentialFor(remote), records })
+      } catch (error) {
+        return { ok: false, remoteId: remote.id, error: error.message || String(error) }
+      }
+    }))
+    this.store.log({ op: 'sync-push', message: results.map((r) => r.remoteId + ':' + (r.ok ? 'ok' : 'error')).join(',') })
+    return { ok: results.every((r) => r.ok), results }
   }
 
   /** Pull and validate only; the user chooses what to install. */
-  async syncPull(repo) {
-    const manifest = await pullManifest({ cacheRoot: path.join(managerDir(), 'sync'), repo })
-    this.store.log({ op: 'sync-pull', message: repo + ' · ' + manifest.skills.length + ' skills', status: 'ok' })
-    return { ok: true, manifest }
+  async syncPull(remoteIds) {
+    const remotes = this.selectedRemotes(remoteIds)
+    if (!remotes.length) return { ok: false, reason: '请先配置并选择至少一个远端', results: [] }
+    const results = await Promise.all(remotes.map(async (remote) => {
+      try {
+        const manifest = await pullManifest({ cacheRoot: path.join(managerDir(), 'sync'), remote, credential: this.credentialFor(remote) })
+        return { ok: true, remoteId: remote.id, manifest }
+      } catch (error) {
+        return { ok: false, remoteId: remote.id, error: error.message || String(error) }
+      }
+    }))
+    this.store.log({ op: 'sync-pull', message: results.map((r) => r.remoteId + ':' + (r.ok ? 'ok' : 'error')).join(',') })
+    return { ok: results.every((r) => r.ok), results }
   }
 
   dispose() {
