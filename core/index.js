@@ -10,3 +10,4 @@ export { disableSkill, enableSkill, removeSkill, linkSkill, unlinkSkill, materia
 export { backupSkill, rollbackSkill, pruneBackups, listBackups, DEFAULT_RETENTION } from './backup.js'
 export { SkillsCli, cliEnvironment, parseListOutput, parseFindOutput } from './skills-cli.js'
 export { manifestFromRecords, parseManifest, pushManifest, pullManifest, SyncError, MANIFEST_FILE, MANIFEST_VERSION } from './sync.js'
+export { Marketplace, DEFAULT_SOURCES, validateSources } from './market.js'

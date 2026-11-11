@@ -13,7 +13,7 @@ import {
   reconcile, annotateCollisions, healthReport, readSkillBody, peekSkill,
   disableSkill, enableSkill, removeSkill, linkSkill, unlinkSkill, materializeSkill,
   backupSkill, rollbackSkill, pruneBackups, listBackups,
-  SkillsCli, OpError, pushManifest, pullManifest
+  SkillsCli, OpError, pushManifest, pullManifest, Marketplace, validateSources
 } from '../core/index.js'
 import { checkSkill, previewFix } from '../core/health.js'
 
@@ -43,6 +43,7 @@ export class SkillsManager {
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.store = new SkillStore(managerDir())
     this.cli = new SkillsCli({ onEvent: (entry) => this.store.log(entry) })
+    this.marketplace = new Marketplace(this.cli)
     this._roots = null
     this._rootsAt = 0
     this._loadedCache = { at: 0, names: new Set() }
@@ -525,6 +526,43 @@ export class SkillsManager {
     this.refresh()
     this._loadedCache.at = 0
     return { ok: true, ...extra }
+  }
+
+  marketSourcesFile() {
+    return path.join(managerDir(), 'market-sources.json')
+  }
+
+  marketSources() {
+    try {
+      return validateSources(JSON.parse(fs.readFileSync(this.marketSourcesFile(), 'utf8')))
+    } catch {
+      return this.marketplace.sources()
+    }
+  }
+
+  saveMarketSources(input) {
+    const sources = validateSources(input)
+    fs.mkdirSync(managerDir(), { recursive: true })
+    const temp = this.marketSourcesFile() + '.tmp-' + process.pid
+    fs.writeFileSync(temp, JSON.stringify(sources, null, 2) + '\n', 'utf8')
+    fs.renameSync(temp, this.marketSourcesFile())
+    this.store.log({ op: 'market-sources', message: sources.filter((s) => s.enabled).map((s) => s.id).join(',') })
+    return { ok: true, sources }
+  }
+
+  async marketSearch(sourceId, query) {
+    const source = this.marketSources().find((s) => s.id === sourceId) || this.marketSources()[0]
+    if (!source.enabled) return { ok: false, reason: '该来源已停用，请在来源配置中启用', rows: [] }
+    return this.marketplace.search(source, query)
+  }
+
+  async skillhubInstall(name, sourceId) {
+    const source = this.marketSources().find((s) => s.id === sourceId) || this.marketSources().find((s) => s.type === 'skillhub')
+    const targetDir = defaultRootDir(this.roots(), 'global', 'agents')
+    const result = await this.marketplace.installSkillhub(name, targetDir, source)
+    this.store.log({ op: 'skillhub-install', skill: name, message: source.name, status: result.ok ? 'ok' : 'error' })
+    if (result.ok) this.finishMutation(result)
+    return result
   }
 
   /** Fill downloadable refs from `skills list` without writing skill content. */

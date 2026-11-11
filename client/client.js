@@ -349,6 +349,19 @@ window.__ModuleLoader__.load({
 '.skb-log-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--dsw-alias-border-l1,#2a2a2a);font-size:12.5px}' +
 '.skb-log-row:last-child{border-bottom:none}.skb-log-time{color:var(--dsw-alias-label-secondary,#999);flex:none;width:150px}' +
 '.skb-mutating{opacity:.55;pointer-events:none}' +
+'.skb-market-search{display:flex;gap:8px}.skb-market-search .skb-input{flex:1}' +
+'.skb-market-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}' +
+'.skb-author-filter{flex:1;min-width:120px}' +
+'.skb-source-config{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l1,#333);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#1c1c1c)}' +
+'.skb-source-row{display:flex;align-items:center;justify-content:space-between;gap:8px}' +
+'.skb-source-row label{display:flex;align-items:center;gap:6px}' +
+'.skb-source-new{display:grid;grid-template-columns:1fr 1fr auto;gap:8px}' +
+'.skb-market-results{display:flex;flex-direction:column;gap:8px;overflow-y:auto}' +
+'.skb-market-desc{color:var(--dsw-alias-label-secondary,#999);font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}' +
+'.skb-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:32px;color:var(--dsw-alias-label-secondary,#999)}' +
+'.skb-spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--dsw-alias-border-l2,#555);border-top-color:var(--dsw-alias-brand-primary,#4D6BFE);animation:skb-spin .8s linear infinite}' +
+'@keyframes skb-spin{to{transform:rotate(360deg)}}' +
+'@media (prefers-reduced-motion: reduce){.skb-spinner{animation:none}}' +
 '.skb-field{display:block}.skb-field input{display:block;width:100%;margin-top:4px}'
 
     var stylesInjected = false
@@ -364,6 +377,24 @@ window.__ModuleLoader__.load({
         document.head.appendChild(tag)
         stylesInjected = true
       } catch (e) { /* never break */ }
+    }
+
+    function compactNumber(value) {
+      if (value === null || value === undefined || value === '') return '—'
+      if (typeof value === 'string') return value
+      const n = Number(value)
+      if (!Number.isFinite(n)) return '—'
+      if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
+      if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+      return String(n)
+    }
+
+    function installCount(value) {
+      if (typeof value === 'number') return value
+      const m = /([\d.]+)\s*([KM]?)/i.exec(String(value || ''))
+      if (!m) return 0
+      const n = parseFloat(m[1])
+      return m[2].toUpperCase() === 'M' ? n * 1000000 : m[2].toUpperCase() === 'K' ? n * 1000 : n
     }
 
     function cubeSvg() {
@@ -599,64 +630,140 @@ window.__ModuleLoader__.load({
             } }))))
       }
       if (S.modal === 'market') {
-        var rows = (S.market.rows || []).map(function (row) {
-          var low = (function () {
-            var m = /([\d.]+)\s*([KM]?)\s*installs/i.exec(row.installs || '')
-            if (!m) return true
-            var n = parseFloat(m[1]); var unit = m[2].toUpperCase()
-            var total = unit === 'M' ? n * 1000000 : unit === 'K' ? n * 1000 : n
-            return total < 100
-          })()
-          return el('div', { class: 'skb-market-row' },
-            el('div', { class: 'skb-market-main' },
-              el('div', { class: 'skb-market-ref', text: row.ref }),
-              el('div', { class: 'skb-market-meta', text: row.installs + (row.url ? ' · ' + row.url : '') }),
-              low ? el('div', { class: 'skb-notice skb-notice--warn', style: { marginTop: '4px' }, text: t('market.lowTrust') }) : null),
-            el('button', { class: 'skb-btn skb-btn--primary', type: 'button', disabled: S.market.installing !== null,
-              text: S.market.installing === row.ref ? t('market.installing') : t('market.install'),
-              onclick: function () {
-                setState({ market: { query: S.market.query, rows: S.market.rows, searched: S.market.searched, installing: row.ref } })
-                mutate('/cli/add', { pkg: row.ref, scope: 'global' }).then(function (r) {
-                  setState({ market: { query: '', rows: [], searched: false, installing: null }, modal: null })
-                })
-              } }))
+        var m = S.market
+        if (!m.sourcesLoaded) {
+          m.sourcesLoaded = true
+          api('/market/sources').then(function (data) {
+            setState({ market: { ...S.market, sources: data.sources } })
+          }).catch(function () {
+            setState({ market: { ...S.market, sources: [
+              { id: 'skills', name: 'skills.sh（官方）', type: 'skills', enabled: true },
+              { id: 'github', name: 'GitHub', type: 'github', enabled: true },
+              { id: 'skillhub', name: 'SkillHub', type: 'skillhub', enabled: true, installGuide: 'https://skillhub.cn/install/skillhub.md' }
+            ] } })
+          })
+        }
+        var enabledSources = (m.sources || []).filter(function (src) { return src.enabled })
+        var rows = (m.rows || []).filter(function (row) {
+          if (!m.author) return true
+          return String(row.author || '').toLowerCase().indexOf(m.author.toLowerCase()) >= 0
         })
-        var searchRow = el('div', { style: { display: 'flex', gap: '8px' } },
-          el('input', { class: 'skb-input', style: { flex: '1' }, value: S.market.query, placeholder: t('market.query'),
-            oninput: function (e) { S.market.query = e.target.value } }),
-          el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('market.search'), onclick: function () {
-            api('/cli/find', { query: S.market.query }).then(function (data) {
-              setState({ market: { query: S.market.query, rows: data.rows || [], searched: true, installing: null } })
-            }).catch(function (e) {
-              setState({ notice: { kind: 'error', text: e.message } })
-            })
-          } }))
-        return modalShell(t('market.title'), el('div', null,
-          searchRow,
-          S.market.searched && S.market.rows.length === 0 ? el('div', { class: 'skb-empty', text: t('market.empty') }) : null,
-          rows))
-      }
-      if (S.modal === 'local') {
-        return modalShell(t('local.title'), el('div', null,
-          el('label', { class: 'skb-field', text: t('local.target') },
-            el('div', { style: { display: 'flex', gap: '8px', marginTop: '4px' } },
-              el('input', { class: 'skb-input', style: { flex: '1' }, value: S.localForm.target, oninput: function (e) { S.localForm.target = e.target.value } }),
-              el('button', { class: 'skb-btn', type: 'button', text: t('action.pickDirectory'), onclick: async function () {
-                try {
-                  const dir = await pickDirectory()
-                  if (dir) { S.localForm.target = dir; render() }
-                } catch (e) { setState({ notice: { kind: 'error', text: e.message || String(e) } }) }
-              } }))),
-          el('label', { class: 'skb-field', text: t('local.name') },
-            el('input', { class: 'skb-input', value: S.localForm.name, oninput: function (e) { S.localForm.name = e.target.value } })),
-          el('div', { class: 'skb-notice', text: t('local.copyFallback') }),
-          el('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
-            el('button', { class: 'skb-btn', type: 'button', text: t('confirm.cancel'), onclick: function () { setState({ modal: null }) } }),
-            el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('local.submit'), onclick: function () {
-              var name = S.localForm.name.trim() || S.localForm.target.split(/[\\/]/).filter(Boolean).pop() || ''
-              setState({ modal: null })
-              mutate('/ops/link', { name: name, target: S.localForm.target })
-            } }))))
+        var sort = m.sort || 'installs'
+        rows.sort(function (a, b) {
+          if (sort === 'stars') return installCount(b.stars) - installCount(a.stars)
+          if (sort === 'updated') return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+          if (sort === 'name') return a.name.localeCompare(b.name)
+          return installCount(b.installs) - installCount(a.installs)
+        })
+        var searchRow = el('div', { class: 'skb-market-search' },
+          el('input', { class: 'skb-input', value: m.query, placeholder: '输入技能关键词，如 mcp、测试、浏览器',
+            oninput: function (e) { m.query = e.target.value },
+            onkeydown: function (e) { if (e.key === 'Enter') searchMarket() } }),
+          el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('market.search'), disabled: !!m.loading, onclick: searchMarket }))
+        function searchMarket() {
+          if (!String(m.query || '').trim()) {
+            setState({ market: { ...m, error: '请输入技能关键词' } })
+            return
+          }
+          setState({ market: { ...m, loading: true, error: null, searched: false } })
+          api('/market/search', { source: m.source || 'skills', query: m.query }).then(function (result) {
+            if (result.ok === false) {
+              setState({ market: { ...S.market, loading: false, searched: true, rows: [], error: result.reason || '搜索失败', installGuide: result.installGuide || null } })
+            } else {
+              setState({ market: { ...S.market, loading: false, searched: true, rows: result.rows || [], error: null } })
+            }
+          }).catch(function (e) {
+            setState({ market: { ...S.market, loading: false, searched: true, rows: [], error: e.message } })
+          })
+        }
+        function onSourceChange(e) {
+          setState({ market: { ...m, source: e.target.value, rows: [], searched: false } })
+        }
+        function onSortChange(e) {
+          setState({ market: { ...m, sort: e.target.value } })
+        }
+        function onConfigToggle() {
+          setState({ market: { ...m, configOpen: !m.configOpen } })
+        }
+        var filterRow = el('div', { class: 'skb-market-filters' },
+          el('select', { class: 'skb-select', value: m.source || 'skills', onchange: onSourceChange },
+            enabledSources.map(function (src) { return el('option', { value: src.id, text: src.name, selected: (m.source || 'skills') === src.id || null }) })),
+          el('select', { class: 'skb-select', value: sort, onchange: onSortChange },
+            el('option', { value: 'installs', text: '按下载量' }),
+            el('option', { value: 'stars', text: '按星标' }),
+            el('option', { value: 'updated', text: '按最近更新' }),
+            el('option', { value: 'name', text: '按名称' })),
+          el('input', { class: 'skb-input skb-author-filter', value: m.author || '', placeholder: '作者筛选', oninput: function (e) { m.author = e.target.value } }),
+          el('button', { class: 'skb-btn', type: 'button', text: m.configOpen ? '收起来源配置' : '来源配置', onclick: onConfigToggle }))
+        var config = null
+        if (m.configOpen) {
+          config = el('div', { class: 'skb-source-config' },
+            (m.sources || []).map(function (src) {
+              return el('div', { class: 'skb-source-row' },
+                el('label', null,
+                  el('input', { type: 'checkbox', checked: !!src.enabled, onchange: function (e) {
+                    const sources = m.sources.map((x) => x.id === src.id ? { ...x, enabled: e.target.checked } : x)
+                    setState({ market: { ...m, sources } })
+                  } }),
+                  ' ' + src.name + '（' + src.type + '）'),
+                ['skills', 'github', 'skillhub'].indexOf(src.id) < 0 ? el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: '删除', onclick: function () {
+                  setState({ market: { ...m, sources: m.sources.filter((x) => x.id !== src.id) } })
+                } }) : null)
+            }),
+            el('div', { class: 'skb-source-new' },
+              el('input', { class: 'skb-input', value: m.newName || '', placeholder: '新来源名称', oninput: function (e) { m.newName = e.target.value } }),
+              el('input', { class: 'skb-input', value: m.newSuffix || '', placeholder: 'GitHub 搜索限定（如 topic:skills）', oninput: function (e) { m.newSuffix = e.target.value } }),
+              el('button', { class: 'skb-btn', type: 'button', text: '新增 GitHub 来源', onclick: function () {
+                if (!m.newName || !m.newName.trim()) return
+                const source = { id: 'github-custom-' + Date.now(), name: m.newName.trim(), type: 'github', enabled: true, querySuffix: (m.newSuffix || '').trim() }
+                setState({ market: { ...m, sources: [...m.sources, source], newName: '', newSuffix: '' } })
+              } })),
+            el('div', null,
+              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: '保存来源配置', onclick: function () {
+                api('/market/sources', { sources: m.sources }).then(function () {
+                  setState({ market: { ...m, configOpen: false }, notice: { kind: 'ok', text: '来源配置已保存' } })
+                }).catch(function (e) { setState({ notice: { kind: 'error', text: e.message } }) })
+              } })))
+        }
+        var body = el('div', null, searchRow, filterRow, config)
+        if (m.loading) {
+          body.appendChild(el('div', { class: 'skb-loading', role: 'status' }, el('span', { class: 'skb-spinner' }), '正在搜索，请稍候…'))
+        } else if (m.error) {
+          body.appendChild(el('div', { class: 'skb-notice skb-notice--warn', text: m.error }))
+          if (m.installGuide) body.appendChild(el('a', { href: m.installGuide, target: '_blank', rel: 'noreferrer', text: 'SkillHub 安装说明（官方）' }))
+        } else if (m.searched && rows.length === 0) {
+          body.appendChild(el('div', { class: 'skb-empty', text: t('market.empty') }))
+        } else {
+          body.appendChild(el('div', { class: 'skb-market-results' }, rows.map(function (row) {
+            return el('div', { class: 'skb-market-row' },
+              el('div', { class: 'skb-market-main' },
+                el('div', { class: 'skb-market-ref', text: row.ref }),
+                el('div', { class: 'skb-market-desc', text: row.description || '' }),
+                el('div', { class: 'skb-market-meta' },
+                  '⭐ ' + compactNumber(row.stars) + ' · ⬇ ' + (row.installs || '—') + ' · 版本 ' + (row.version || '未标注') + ' · 更新 ' + (formatTime(row.updatedAt) || '—')),
+                el('div', { class: 'skb-market-meta' }, '作者 ' + (row.author || '—') + ' · 来源 ' + (row.sourceName || row.source))),
+              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', disabled: m.installing !== null,
+                text: m.installing === row.ref ? t('market.installing') : t('market.install'),
+                onclick: function () {
+                  const source = (m.sources || []).find((src) => src.id === row.source)
+                  setState({ market: { ...m, installing: row.ref } })
+                  const request = source && source.type === 'skillhub'
+                    ? api('/skillhub/install', { name: row.install, source: row.source })
+                    : api('/cli/add', { pkg: row.install, scope: 'global' })
+                  request.then(function (result) {
+                    if (result.ok === false) {
+                      setState({ market: { ...m, installing: null, error: result.reason || '安装失败', installGuide: result.installGuide || null } })
+                    } else {
+                      setState({ market: { ...m, installing: null }, notice: { kind: 'ok', text: row.ref + ' 已安装' }, modal: null })
+                      load()
+                    }
+                  }).catch(function (e) {
+                    setState({ market: { ...m, installing: null, error: e.message } })
+                  })
+                } }))
+          })))
+        }
+        return modalShell(t('market.title'), body)
       }
       if (S.modal === 'external') {
         var external = (S.view && S.view.externalSkills) || []
@@ -770,7 +877,7 @@ window.__ModuleLoader__.load({
 
     function menuEl() {
       return el('div', { class: 'skb-menu', role: 'menu' },
-        el('button', { type: 'button', text: t('add.market'), onclick: function () { setState({ modal: 'market', market: { query: '', rows: [], searched: false, installing: null } }) } }),
+        el('button', { type: 'button', text: t('add.market'), onclick: function () { setState({ modal: 'market', market: { query: '', rows: [], searched: false, installing: null, sources: [], sourcesLoaded: false, source: 'skills', sort: 'installs', author: '', loading: false, error: null, configOpen: false } }) } }),
         el('button', { type: 'button', text: t('add.local'), onclick: function () { setState({ modal: 'local', localForm: { target: '', name: '' } }) } }),
         el('button', { type: 'button', text: t('add.external'), onclick: function () { setState({ modal: 'external' }) } }),
         el('button', { type: 'button', text: t('add.root'), onclick: async function () {

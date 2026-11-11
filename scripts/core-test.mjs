@@ -272,5 +272,21 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   assert.deepEqual(withBad.skills.map((s) => s.name), ['ok'])
 }
 
+// --- market source configuration ---
+{
+  const defaults = core.validateSources([])
+  assert.ok(defaults.some((s) => s.id === 'skills' && s.enabled))
+  assert.ok(defaults.some((s) => s.id === 'github' && s.enabled))
+  assert.ok(defaults.some((s) => s.id === 'skillhub' && s.installGuide))
+  const custom = core.validateSources([
+    ...defaults,
+    { id: 'github-security', name: 'Security skills', type: 'github', enabled: true, querySuffix: 'topic:security' },
+    { id: 'bad type', name: 'bad', type: 'unknown' }
+  ])
+  const added = custom.find((s) => s.id === 'github-security')
+  assert.equal(added.querySuffix, 'topic:security')
+  assert.ok(!custom.some((s) => s.id === 'bad type'))
+}
+
 await fsp.rm(tmp, { recursive: true, force: true })
 console.log('core tests: all assertions passed')

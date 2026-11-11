@@ -81,6 +81,11 @@ export function registerRoutes(webServer, connection, manager) {
   route('/roots/add', ['POST'], (ctx) => manager.opAddCustomRoot(ctx.body.dir))
   route('/roots/remove', ['POST'], (ctx) => manager.opRemoveCustomRoot(ctx.body.dir))
 
+  route('/market/search', ['POST'], (ctx) => manager.marketSearch(ctx.body.source, ctx.body.query))
+  route('/market/sources', ['GET'], () => ({ ok: true, sources: manager.marketSources() }))
+  route('/market/sources', ['POST'], (ctx) => manager.saveMarketSources(ctx.body.sources))
+  route('/skillhub/install', ['POST'], (ctx) => manager.skillhubInstall(ctx.body.name, ctx.body.source))
+
   route('/cli/find', ['POST'], (ctx) => manager.cliFind(ctx.body.query))
   route('/cli/add', ['POST'], (ctx) => manager.cliAdd(ctx.body.pkg, { scope: ctx.body.scope || 'global' }))
   route('/cli/update', ['POST'], (ctx) => manager.cliUpdate(ctx.body.names, { scope: ctx.body.scope || 'global' }))
