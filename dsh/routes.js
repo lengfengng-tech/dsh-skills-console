@@ -86,6 +86,9 @@ export function registerRoutes(webServer, connection, manager) {
   route('/cli/update', ['POST'], (ctx) => manager.cliUpdate(ctx.body.names, { scope: ctx.body.scope || 'global' }))
   route('/cli/remove', ['POST'], (ctx) => manager.cliRemove(ctx.body.names, { scope: ctx.body.scope || 'global' }))
 
+  route('/sync/push', ['POST'], (ctx) => manager.syncPush(ctx.body.repo))
+  route('/sync/pull', ['POST'], (ctx) => manager.syncPull(ctx.body.repo))
+
   route('/backups', ['GET'], () => manager.backups())
   route('/backups/prune', ['POST'], () => manager.prune())
   route('/logs', ['GET'], (ctx) => manager.logs(Number(ctx.url.searchParams.get('limit') || 100)))

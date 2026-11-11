@@ -243,5 +243,28 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   assert.equal(proj.dir, 'D:\\proj\\.agents\\skills')
 }
 
+// --- sync.js: manifests contain refs only, never skill content ---
+{
+  const manifest = core.manifestFromRecords([
+    { name: 'tdd', sourceRef: 'mattpocock/skills@tdd', origin: 'marketplace' },
+    { name: 'local-only', sourceRef: 'external:claude', origin: 'symlink' },
+    { name: 'broken-ref', sourceRef: 'not-a-download-ref', origin: 'manual' }
+  ])
+  assert.equal(manifest.skills.length, 1)
+  assert.equal(manifest.skills[0].install, 'mattpocock/skills@tdd')
+  assert.equal(manifest.skills[0].url, 'https://skills.sh/mattpocock/skills/tdd')
+  assert.ok(!JSON.stringify(manifest).includes('SKILL.md content'), 'no bodies cross the manifest')
+
+  const parsed = core.parseManifest(JSON.stringify(manifest))
+  assert.equal(parsed.skills.length, 1)
+  assert.throws(() => core.parseManifest('{"version":99,"skills":[]}'), /不受支持/)
+  const withBad = core.parseManifest(JSON.stringify({ version: 1, skills: [
+    { name: 'ok', install: 'a/b@ok' },
+    { name: 'bad', install: '../../etc' },
+    { name: 'ok', install: 'a/b@ok' }
+  ] }))
+  assert.deepEqual(withBad.skills.map((s) => s.name), ['ok'])
+}
+
 await fsp.rm(tmp, { recursive: true, force: true })
 console.log('core tests: all assertions passed')

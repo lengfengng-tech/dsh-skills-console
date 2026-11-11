@@ -87,7 +87,11 @@ window.__ModuleLoader__.load({
         'switch.enable': '启用', 'switch.disable': '停用',
         'drawer.uninstall': '卸载', 'drawer.pin': '置顶', 'drawer.unpin': '取消置顶',
         'drawer.materialize': '转正为实体目录', 'drawer.unlink': '断开软链', 'drawer.rollback': '回滚此备份',
-        'drawer.export': '导出',
+        'drawer.export': '导出', 'drawer.update': '升级', 'drawer.updateUnsupported': '该来源不支持检查升级',
+        'action.sync': 'GitHub 同步', 'sync.title': '同步技能清单',
+        'sync.repo': '个人仓库（owner/repo）', 'sync.push': '推送清单', 'sync.pull': '拉取清单',
+        'sync.note': '只同步名称、下载地址和来源，不上传技能文件内容；推送只在你点击时发生。',
+        'sync.empty': '清单中没有可下载的技能', 'sync.install': '安装',
         'meta.scope': '作用域', 'meta.agent': '归属', 'meta.origin': '来源', 'meta.source': '来源引用',
         'meta.linked': '链接目标', 'meta.mtime': '更新时间', 'meta.installedBy': '安装者',
         'meta.dir': '目录', 'meta.status': '状态',
@@ -143,7 +147,11 @@ window.__ModuleLoader__.load({
         'switch.enable': 'Enable', 'switch.disable': 'Disable',
         'drawer.uninstall': 'Uninstall', 'drawer.pin': 'Pin', 'drawer.unpin': 'Unpin',
         'drawer.materialize': 'Materialize copy', 'drawer.unlink': 'Unlink', 'drawer.rollback': 'Rollback to this',
-        'drawer.export': 'Export',
+        'drawer.export': 'Export', 'drawer.update': 'Upgrade', 'drawer.updateUnsupported': 'Updates unavailable for this origin',
+        'action.sync': 'GitHub sync', 'sync.title': 'Sync skill manifest',
+        'sync.repo': 'Personal repo (owner/repo)', 'sync.push': 'Push manifest', 'sync.pull': 'Pull manifest',
+        'sync.note': 'Only names, download refs, and origins sync; skill files never upload. Push happens only when you click it.',
+        'sync.empty': 'No downloadable skills in this manifest', 'sync.install': 'Install',
         'meta.scope': 'Scope', 'meta.agent': 'Agent', 'meta.origin': 'Origin', 'meta.source': 'Source ref',
         'meta.linked': 'Link target', 'meta.mtime': 'Updated', 'meta.installedBy': 'Installed by',
         'meta.dir': 'Directory', 'meta.status': 'Status',
@@ -344,7 +352,8 @@ window.__ModuleLoader__.load({
       modal: null, confirmSkill: null,
       market: { query: '', rows: [], searched: false, installing: null },
       localForm: { target: '', name: '' },
-      health: null, logs: null, rootsSnapshot: null
+      health: null, logs: null, rootsSnapshot: null,
+      sync: { repo: '', result: null, manifest: null, busy: false }
     }
     var rootEl = null
     var sessionIdProvider = function () { return null }
@@ -450,7 +459,8 @@ window.__ModuleLoader__.load({
           el('div', { class: 'skb-badges' },
             el('span', { class: 'skb-badge', text: t('scope.' + skill.scope) }),
             /^external:(.+)$/.test(skill.sourceRef || '') ? el('span', { class: 'skb-badge', text: t('source.externalPrefix') + /^external:(.+)$/.exec(skill.sourceRef)[1] }) : null,
-            el('span', { class: 'skb-badge', text: t('origin.' + skill.origin) }))),
+            el('span', { class: 'skb-badge', text: t('origin.' + skill.origin) }),
+            skill.sources && skill.sources.length > 1 ? el('span', { class: 'skb-badge', text: skill.sources.length + (currentLang === 'zh' ? ' 个来源' : ' sources') }) : null)),
         el('div', { class: 'skb-row-side' },
           el('span', { class: 'skb-loaded' + (skill.loaded ? ' skb-loaded--yes' : ''), text: (skill.loaded ? '● ' : '○ ') + (skill.loaded ? t('loaded.yes') : t('loaded.no')) }),
           switchEl(skill)))
@@ -517,6 +527,11 @@ window.__ModuleLoader__.load({
           el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: t('drawer.uninstall'), onclick: function () { setState({ modal: 'confirm', confirmSkill: r }) } }),
           r.origin === 'symlink' ? el('button', { class: 'skb-btn', type: 'button', text: t('drawer.materialize'), onclick: function () { mutate('/ops/materialize', { name: skill.name, dir: skill.dir }).then(function () { setState({ selected: null }) }) } }) : null,
           r.origin === 'symlink' ? el('button', { class: 'skb-btn', type: 'button', text: t('drawer.unlink'), onclick: function () { mutate('/ops/unlink', { name: skill.name, dir: skill.dir }).then(function () { setState({ selected: null }) }) } }) : null,
+          el('button', { class: 'skb-btn', type: 'button',
+            text: t('drawer.update'),
+            disabled: !(r.sourceRef && !String(r.sourceRef).startsWith('external:')) || (S.view && S.view.env && S.view.env.ok === false),
+            title: t('drawer.updateUnsupported'),
+            onclick: function () { mutate('/cli/update', { names: [skill.name], scope: skill.scope }) } }),
           el('button', { class: 'skb-btn', type: 'button', text: r.pinned ? t('drawer.unpin') : t('drawer.pin'), onclick: function () { mutate('/ops/pin', { name: skill.name, dir: skill.dir, pinned: !r.pinned }) } }))
       }
       var drawer = el('div', { class: 'skb-drawer', role: 'dialog' },
@@ -617,6 +632,43 @@ window.__ModuleLoader__.load({
               } }))
           })))
       }
+      if (S.modal === 'sync') {
+        var sync = S.sync
+        var manifestRows = sync.manifest && sync.manifest.skills ? sync.manifest.skills : []
+        return modalShell(t('sync.title'), el('div', null,
+          el('div', { class: 'skb-notice', text: t('sync.note') }),
+          el('label', { class: 'skb-field', text: t('sync.repo') },
+            el('input', { class: 'skb-input', value: sync.repo, placeholder: 'owner/repo', oninput: function (e) { S.sync.repo = e.target.value } })),
+          el('div', { style: { display: 'flex', gap: '8px' } },
+            el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('sync.push'), disabled: sync.busy || !sync.repo.trim(), onclick: function () {
+              S.sync.busy = true; render()
+              api('/sync/push', { repo: S.sync.repo.trim() }).then(function (result) {
+                setState({ sync: { repo: S.sync.repo, result: result, manifest: S.sync.manifest, busy: false } })
+              }).catch(function (e) {
+                setState({ sync: { repo: S.sync.repo, result: { error: e.message }, manifest: S.sync.manifest, busy: false } })
+              })
+            } }),
+            el('button', { class: 'skb-btn', type: 'button', text: t('sync.pull'), disabled: sync.busy || !sync.repo.trim(), onclick: function () {
+              S.sync.busy = true; render()
+              api('/sync/pull', { repo: S.sync.repo.trim() }).then(function (result) {
+                setState({ sync: { repo: S.sync.repo, result: null, manifest: result.manifest, busy: false } })
+              }).catch(function (e) {
+                setState({ sync: { repo: S.sync.repo, result: { error: e.message }, manifest: null, busy: false } })
+              })
+            } })),
+          sync.result ? el('div', { class: 'skb-notice skb-notice--' + (sync.result.error ? 'error' : 'ok'), text: sync.result.error || (sync.result.repo + ' · ' + sync.result.count + ' skills') }) : null,
+          sync.manifest ? el('div', null,
+            manifestRows.length === 0 ? el('div', { class: 'skb-empty', text: t('sync.empty') }) : null,
+            manifestRows.map(function (item) {
+              return el('div', { class: 'skb-market-row' },
+                el('div', { class: 'skb-market-main' },
+                  el('div', { class: 'skb-market-ref', text: item.name }),
+                  el('div', { class: 'skb-market-meta', text: item.install + (item.url ? ' · ' + item.url : '') })),
+                el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('sync.install'), onclick: function () {
+                  mutate('/cli/add', { pkg: item.install, scope: 'global' })
+                } }))
+            })) : null))
+      }
       if (S.modal === 'roots') {
         var roots = S.rootsSnapshot || (S.view && S.view.roots) || []
         return modalShell(t('roots.title'), el('div', null,
@@ -706,6 +758,7 @@ window.__ModuleLoader__.load({
               setState({ notice: { kind: r ? 'ok' : 'warn', text: r ? t('notice.undoOk') : t('notice.undoNone') } })
             })
           } }),
+          el('button', { class: 'skb-btn', type: 'button', text: t('action.sync'), onclick: function () { setState({ modal: 'sync' }) } }),
           el('div', { class: 'skb-relative' },
             el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('action.add') + ' ▾', onclick: function (e) {
               var menu = e.target.parentElement.querySelector('.skb-menu')

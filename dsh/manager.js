@@ -13,7 +13,7 @@ import {
   reconcile, annotateCollisions, healthReport, readSkillBody, peekSkill,
   disableSkill, enableSkill, removeSkill, linkSkill, unlinkSkill, materializeSkill,
   backupSkill, rollbackSkill, pruneBackups, listBackups,
-  SkillsCli, OpError
+  SkillsCli, OpError, pushManifest, pullManifest
 } from '../core/index.js'
 import { checkSkill, previewFix } from '../core/health.js'
 
@@ -174,14 +174,35 @@ export class SkillsManager {
       description: safePeek(r).description || '',
       brokenLink: !!r.brokenLink
     }))
-    const enriched = records.filter((r) => r.agent === 'agents').map((r) => {
-      const probe = r.brokenLink ? { mtime: 0, description: '' } : safePeek(r)
+    const dshRecords = records.filter((r) => r.agent === 'agents')
+    const byName = new Map()
+    for (const record of dshRecords) {
+      if (!byName.has(record.name)) byName.set(record.name, [])
+      byName.get(record.name).push(record)
+    }
+    const enriched = [...byName.values()].map((group) => {
+      const sorted = group.slice().sort((a, b) => {
+        const am = a.brokenLink ? 0 : safePeek(a).mtime || 0
+        const bm = b.brokenLink ? 0 : safePeek(b).mtime || 0
+        return bm - am
+      })
+      const preferred = sorted[0]
+      const probe = preferred.brokenLink ? { mtime: 0, description: '' } : safePeek(preferred)
       return {
-        ...r,
+        ...preferred,
         description: probe.description || '',
         mtime: probe.mtime || 0,
-        loaded: loaded.has(r.name),
-        issues: checkSkill(r).issues
+        loaded: loaded.has(preferred.name),
+        issues: checkSkill(preferred).issues,
+        sources: sorted.map((source) => ({
+          dir: source.dir,
+          scope: source.scope,
+          origin: source.origin,
+          sourceRef: source.sourceRef,
+          linkedFrom: source.linkedFrom,
+          mtime: source.brokenLink ? 0 : safePeek(source).mtime || 0,
+          disabled: source.disabled
+        }))
       }
     })
     const roots = this.roots().filter((r) => r.agent === 'agents').map((r) => ({
@@ -473,6 +494,40 @@ export class SkillsManager {
     this.refresh()
     this._loadedCache.at = 0
     return { ok: true, ...extra }
+  }
+
+  /** Fill downloadable refs from `skills list` without writing skill content. */
+  async enrichSources() {
+    const listed = await this.cli.list('global')
+    if (!listed.ok) return listed
+    const byName = new Map(listed.rows.map((row) => [row.name, row]))
+    const state = this.store.state()
+    let changed = false
+    const skills = state.skills.map((record) => {
+      if (record.agent !== 'agents' || record.sourceRef) return record
+      const row = byName.get(record.name)
+      if (!row || !row.source || row.source === 'untracked') return record
+      changed = true
+      return { ...record, sourceRef: row.source + '@' + record.name }
+    })
+    if (changed) this.store.write({ ...state, skills })
+    return listed
+  }
+
+  /** Explicit user action: push only a manifest, never skill files. */
+  async syncPush(repo) {
+    await this.enrichSources()
+    const records = this.records().filter((r) => r.agent === 'agents')
+    const result = await pushManifest({ cacheRoot: path.join(managerDir(), 'sync'), repo, records })
+    this.store.log({ op: 'sync-push', message: repo + ' · ' + result.count + ' skills', status: 'ok' })
+    return result
+  }
+
+  /** Pull and validate only; the user chooses what to install. */
+  async syncPull(repo) {
+    const manifest = await pullManifest({ cacheRoot: path.join(managerDir(), 'sync'), repo })
+    this.store.log({ op: 'sync-pull', message: repo + ' · ' + manifest.skills.length + ' skills', status: 'ok' })
+    return { ok: true, manifest }
   }
 
   dispose() {
