@@ -205,15 +205,17 @@ window.__ModuleLoader__.load({
         method: body === undefined ? 'GET' : 'POST',
         headers: body === undefined ? undefined : { 'content-type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body)
-      }).then(function (res) {
-        return res.json().then(function (data) {
-          if (!res.ok || !data || data.ok !== true) {
-            var err = new Error(data && data.message ? data.message : 'HTTP ' + res.status)
-            err.code = data && data.error
-            throw err
-          }
-          return data
-        })
+      }).then(async function (res) {
+        const text = await res.text()
+        let data = null
+        try { data = text ? JSON.parse(text) : null } catch { /* non-JSON upstream response */ }
+        if (!res.ok || !data || data.ok !== true) {
+          const detail = data && data.message ? data.message : ('HTTP ' + res.status + (text ? '' : '（空响应）'))
+          const err = new Error(detail + ' · ' + path)
+          err.code = data && data.error
+          throw err
+        }
+        return data
       })
     }
     var pickerContext = null
@@ -452,7 +454,7 @@ window.__ModuleLoader__.load({
     function refreshAll() {
       if (S.busy) return
       setState({ busy: true, notice: null })
-      api('/refresh').then(function (result) {
+      api('/refresh', {}).then(function (result) {
         const count = result.skills ? result.skills.length : 0
         return load().then(function () {
           setState({ notice: { kind: 'ok', text: '刷新成功，共 ' + count + ' 个技能' } })
@@ -1187,7 +1189,7 @@ window.__ModuleLoader__.load({
             return slots.register({
               name: 'settings.section',
               id: SECTION_ID,
-              order: 25,
+              order: 19,
               locale: NS,
               label: function () { try { return t('nav') } catch (e) { return '技能' } },
               inject: function () { return {} }

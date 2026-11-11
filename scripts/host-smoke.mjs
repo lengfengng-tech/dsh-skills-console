@@ -103,6 +103,18 @@ assert.ok(logs.logs.some((l) => l.op === 'remove'))
   assert.equal((await probe.loadedNames('s-current')).has('gamma'), true)
   probe._loadedCache.at = 0 // defeat cache for the active-agent fallback case
   assert.equal((await probe.loadedNames(undefined)).has('alpha'), true, 'active agent supplies the session')
+  const fallbackCtx = {
+    get: (key) => key === 'sessionSkillCatalog' ? {
+      list: async () => ({ skills: [{ name: 'alpha' }] })
+    } : undefined,
+    sessionPersistence: {
+      list: async () => [{ header: { id: 's-current', createdAt: 1 } }]
+    },
+    sessions: { list: () => [] }
+  }
+  const fallback = new SkillsManager(fallbackCtx, { home })
+  assert.equal((await fallback.loadedNames(undefined)).has('alpha'), true, 'persistence supplies latest session when no agent is active')
+  fallback.dispose()
   probe.dispose()
 }
 

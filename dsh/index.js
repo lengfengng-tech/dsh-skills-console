@@ -5,7 +5,7 @@ import { SkillsManager } from './manager.js'
 import { registerRoutes } from './routes.js'
 
 export const name = 'skills-butler'
-export const inject = ['sessions']
+export const inject = ['sessions', 'workspaceRegistry', 'sessionSkillCatalog', 'sessionPersistence']
 
 export function apply(ctx, config = {}) {
   const manager = new SkillsManager(ctx, config)

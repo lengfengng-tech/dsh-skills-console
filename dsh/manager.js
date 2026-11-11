@@ -150,11 +150,26 @@ export class SkillsManager {
     return undefined
   }
 
+  async latestStoredSessionId() {
+    try {
+      const persistence = this.ctx.sessionPersistence
+      if (!persistence || typeof persistence.list !== 'function') return undefined
+      const snapshots = await persistence.list()
+      const ids = snapshots
+        .map((snap) => snap && snap.header)
+        .filter((header) => header && header.id)
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      return ids.length ? ids[0].id : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   async loadedNames(sessionId) {
     const now = Date.now()
     if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === (sessionId || this.currentAgentSessionId())) return this._loadedCache.names
     const names = new Set()
-    const effectiveId = sessionId || this.currentAgentSessionId()
+    const effectiveId = sessionId || this.currentAgentSessionId() || await this.latestStoredSessionId()
     const debug = { sessionId: sessionId || null, effectiveId: effectiveId || null, catalogPresent: false, count: 0, error: null }
     const catalog = this.ctx.get('sessionSkillCatalog')
     debug.catalogPresent = !!catalog
