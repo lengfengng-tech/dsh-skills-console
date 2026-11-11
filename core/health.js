@@ -35,7 +35,10 @@ export function checkSkill(record) {
   }
 
   if (record.shadowed) warn('shadowed-by-project')
-  if (record.conflict) warn('name-conflict')
+  if (record.conflict) {
+    const paths = Array.isArray(record.sources) ? record.sources.map((s) => s.dir).filter(Boolean) : []
+    warn(paths.length > 1 ? 'name-conflict: ' + paths.join(' | ') : 'name-conflict')
+  }
 
   return { loadable: level !== 'error', issues, level }
 }

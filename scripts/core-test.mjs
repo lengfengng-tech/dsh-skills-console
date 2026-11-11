@@ -111,6 +111,12 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
   const merged = core.annotateCollisions(core.reconcile([...scanned, ...projScanned], []))
   const globalRow = merged.find((r) => r.name === 'good-skill' && r.scope === 'global')
   assert.equal(globalRow.shadowed, true)
+  const withPaths = core.checkSkill({
+    ...globalRow,
+    conflict: true,
+    sources: [{ dir: '/tmp/one' }, { dir: '/tmp/two' }]
+  })
+  assert.ok(withPaths.issues.some((i) => i.includes('/tmp/one') && i.includes('/tmp/two')), 'conflict lists every path')
 }
 
 // --- store.js: atomic write, merge, watcher ---

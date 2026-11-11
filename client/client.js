@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
         'meta.scope': '作用域', 'meta.agent': '归属', 'meta.origin': '来源', 'meta.source': '来源引用',
         'meta.linked': '链接目标', 'meta.mtime': '更新时间', 'meta.installedBy': '安装者',
         'meta.dir': '目录', 'meta.status': '状态',
-        'section.preview': 'SKILL.md 预览', 'section.health': '健康报告', 'section.backups': '可用备份',
+        'section.preview': 'SKILL.md 预览', 'section.health': '健康报告', 'section.backups': '可用备份', 'section.sources': '同名来源（全部地址）',
         'confirm.title': '确认操作',
         'confirm.remove': '真移除会删除目录 {{dir}}。此操作不可直接撤销。',
         'confirm.removeForeign': '⚠️ 非本插件安装的技能。{{warning}}',
@@ -155,7 +155,7 @@ window.__ModuleLoader__.load({
         'meta.scope': 'Scope', 'meta.agent': 'Agent', 'meta.origin': 'Origin', 'meta.source': 'Source ref',
         'meta.linked': 'Link target', 'meta.mtime': 'Updated', 'meta.installedBy': 'Installed by',
         'meta.dir': 'Directory', 'meta.status': 'Status',
-        'section.preview': 'SKILL.md preview', 'section.health': 'Health report', 'section.backups': 'Backups',
+        'section.preview': 'SKILL.md preview', 'section.health': 'Health report', 'section.backups': 'Backups', 'section.sources': 'Same-name sources (all paths)',
         'confirm.title': 'Confirm',
         'confirm.remove': 'Removal deletes {{dir}}. It cannot be undone directly.',
         'confirm.removeForeign': '⚠️ Not installed by this plugin. {{warning}}',
@@ -191,8 +191,10 @@ window.__ModuleLoader__.load({
       return dict[key] || DICT.zh[key] || key
     }
     function issueText(code) {
-      var base = String(code).split(':')[0]
-      return t('issue.' + base) !== 'issue.' + base ? t('issue.' + base) : code
+      var text = String(code)
+      var base = text.split(':')[0]
+      var label = t('issue.' + base) !== 'issue.' + base ? t('issue.' + base) : base
+      return text.indexOf(':') > 0 ? label + '：' + text.slice(text.indexOf(':') + 1) : label
     }
 
     // ------------------------------------------------------------------
@@ -467,7 +469,9 @@ window.__ModuleLoader__.load({
     }
 
     function overlay(contentEl, onClose) {
-      return el('div', { class: 'skb-overlay', onclick: onClose }, contentEl)
+      return el('div', { class: 'skb-overlay', onclick: function (e) {
+        if (e.target === e.currentTarget) onClose()
+      } }, contentEl)
     }
 
     function drawerEl() {
@@ -495,6 +499,10 @@ window.__ModuleLoader__.load({
 
         body = el('div', null)
         body.appendChild(meta)
+        if (d.record.sources && d.record.sources.length > 1) {
+          body.appendChild(el('h3', { class: 'skb-section-title', text: t('section.sources') }))
+          body.appendChild(el('pre', { class: 'skb-pre', text: d.record.sources.map(function (source) { return source.dir + (source.scope === 'project' ? ' [project]' : ' [global]') }).join('\n') }))
+        }
         if (d.health.issues.length > 0) {
           body.appendChild(el('h3', { class: 'skb-section-title', text: t('section.health') }))
           body.appendChild(el('pre', { class: 'skb-pre', text: d.health.issues.map(function (i) { return '• ' + issueText(i) }).join('\n') }))
@@ -672,6 +680,15 @@ window.__ModuleLoader__.load({
       if (S.modal === 'roots') {
         var roots = S.rootsSnapshot || (S.view && S.view.roots) || []
         return modalShell(t('roots.title'), el('div', null,
+          el('div', { style: { display: 'flex', gap: '8px' } },
+            el('button', { class: 'skb-btn', type: 'button', text: t('action.health'), onclick: function () {
+              setState({ modal: 'health', health: null })
+              api('/health').then(function (d) { setState({ health: d.report }) }).catch(function (e) { setState({ health: { error: e.message } }) })
+            } }),
+            el('button', { class: 'skb-btn', type: 'button', text: t('action.logs'), onclick: function () {
+              setState({ modal: 'logs', logs: null })
+              api('/logs?limit=120').then(function (d) { setState({ logs: d.logs }) }).catch(function () { setState({ logs: [] }) })
+            } })),
           roots.length === 0 ? el('div', { class: 'skb-empty', text: t('roots.empty') }) : null,
           roots.map(function (root) {
             return el('div', { class: 'skb-market-row' },
@@ -741,14 +758,6 @@ window.__ModuleLoader__.load({
           el('p', { class: 'skb-subtitle', text: t('panel.subtitle') })),
         el('div', { class: 'skb-actions' },
           el('button', { class: 'skb-btn', type: 'button', text: t('action.refresh'), onclick: function () { load() } }),
-          el('button', { class: 'skb-btn', type: 'button', text: t('action.health'), onclick: function () {
-            setState({ modal: 'health', health: null })
-            api('/health').then(function (d) { setState({ health: d.report }) }).catch(function (e) { setState({ health: { error: e.message } }) })
-          } }),
-          el('button', { class: 'skb-btn', type: 'button', text: t('action.logs'), onclick: function () {
-            setState({ modal: 'logs', logs: null })
-            api('/logs?limit=120').then(function (d) { setState({ logs: d.logs }) }).catch(function () { setState({ logs: [] }) })
-          } }),
           el('button', { class: 'skb-btn', type: 'button', text: t('action.roots'), onclick: function () {
             setState({ modal: 'roots', rootsSnapshot: null })
             load().then(function (d) { if (d) setState({ rootsSnapshot: d.roots }) })
@@ -787,7 +796,19 @@ window.__ModuleLoader__.load({
               el('span', { class: 'skb-count', text: c[pair[0]] || 0 }))
           }))
         var search = el('input', { class: 'skb-input skb-search', type: 'search', value: S.search, placeholder: t('search.placeholder'),
-          oninput: function (e) { setState({ search: e.target.value }) } })
+          oninput: function (e) {
+            S.search = e.target.value
+            S.searchSelection = { start: e.target.selectionStart, end: e.target.selectionEnd }
+            if (S.searchTimer) clearTimeout(S.searchTimer)
+            S.searchTimer = setTimeout(function () {
+              render()
+              var next = document.querySelector('.skb-search')
+              if (next && S.searchSelection) {
+                next.focus()
+                try { next.setSelectionRange(S.searchSelection.start, S.searchSelection.end) } catch (err) { /* noop */ }
+              }
+            }, 120)
+          } })
         root.appendChild(el('div', { class: 'skb-toolbar' }, tabs, search))
 
         // list

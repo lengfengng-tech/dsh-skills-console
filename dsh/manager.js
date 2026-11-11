@@ -157,6 +157,39 @@ export class SkillsManager {
     return names
   }
 
+  /** Group DSH-local records by name; newest mtime is the preferred source. */
+  dshGroups() {
+    const byName = new Map()
+    for (const record of this.records()) {
+      if (record.agent !== 'agents') continue
+      if (!byName.has(record.name)) byName.set(record.name, [])
+      byName.get(record.name).push(record)
+    }
+    return [...byName.values()].map((group) => {
+      const sorted = group.slice().sort((a, b) => {
+        const am = a.brokenLink ? 0 : safePeek(a).mtime || 0
+        const bm = b.brokenLink ? 0 : safePeek(b).mtime || 0
+        return bm - am
+      })
+      const preferred = sorted[0]
+      return {
+        ...preferred,
+        mtime: preferred.brokenLink ? 0 : safePeek(preferred).mtime || 0,
+        conflict: group.length > 1,
+        shadowed: group.some((s) => s.scope === 'project') && preferred.scope === 'global',
+        sources: sorted.map((source) => ({
+          dir: source.dir,
+          scope: source.scope,
+          origin: source.origin,
+          sourceRef: source.sourceRef,
+          linkedFrom: source.linkedFrom,
+          mtime: source.brokenLink ? 0 : safePeek(source).mtime || 0,
+          disabled: source.disabled
+        }))
+      }
+    })
+  }
+
   /** Full panel payload: DSH-local skills + importable external skills. */
   async view(sessionId) {
     const records = this.records()
@@ -174,35 +207,14 @@ export class SkillsManager {
       description: safePeek(r).description || '',
       brokenLink: !!r.brokenLink
     }))
-    const dshRecords = records.filter((r) => r.agent === 'agents')
-    const byName = new Map()
-    for (const record of dshRecords) {
-      if (!byName.has(record.name)) byName.set(record.name, [])
-      byName.get(record.name).push(record)
-    }
-    const enriched = [...byName.values()].map((group) => {
-      const sorted = group.slice().sort((a, b) => {
-        const am = a.brokenLink ? 0 : safePeek(a).mtime || 0
-        const bm = b.brokenLink ? 0 : safePeek(b).mtime || 0
-        return bm - am
-      })
-      const preferred = sorted[0]
+    const enriched = this.dshGroups().map((preferred) => {
       const probe = preferred.brokenLink ? { mtime: 0, description: '' } : safePeek(preferred)
       return {
         ...preferred,
         description: probe.description || '',
         mtime: probe.mtime || 0,
         loaded: loaded.has(preferred.name),
-        issues: checkSkill(preferred).issues,
-        sources: sorted.map((source) => ({
-          dir: source.dir,
-          scope: source.scope,
-          origin: source.origin,
-          sourceRef: source.sourceRef,
-          linkedFrom: source.linkedFrom,
-          mtime: source.brokenLink ? 0 : safePeek(source).mtime || 0,
-          disabled: source.disabled
-        }))
+        issues: checkSkill(preferred).issues
       }
     })
     const roots = this.roots().filter((r) => r.agent === 'agents').map((r) => ({
@@ -235,7 +247,7 @@ export class SkillsManager {
   }
 
   async detail(name, dir) {
-    const record = this.records().find((r) => r.name === name && (!dir || r.dir === dir))
+    const record = this.dshGroups().find((r) => r.name === name && (!dir || r.dir === dir)) || this.records().find((r) => r.name === name && (!dir || r.dir === dir))
     if (!record) throw new OpError('not-found', '未找到技能：' + name)
     const body = record.brokenLink ? { ok: false, error: '软链已失效' } : await readSkillBody(record.dir)
     const health = this.healthFor(record)
@@ -253,7 +265,7 @@ export class SkillsManager {
   }
 
   health() {
-    return { ok: true, report: healthReport(this.records().filter((r) => r.agent === 'agents')) }
+    return { ok: true, report: healthReport(this.dshGroups()) }
   }
 
   // ---- operations (each logs with an undo entry) ----
