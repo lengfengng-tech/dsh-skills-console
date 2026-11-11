@@ -104,7 +104,7 @@ window.__ModuleLoader__.load({
         'market.title': '市场搜索', 'market.query': '搜索技能（skills.sh）', 'market.search': '搜索',
         'market.install': '安装', 'market.installing': '安装中…', 'market.empty': '没有匹配结果',
         'market.lowTrust': '社区验证不足（安装量 < 100）：请确认来源可信后再安装。',
-        'market.lockfile': '检测到 skills-lock.json：为尊重生态锁定，本次安装被拒绝。',
+        'market.lockfile': '检测到 skills-lock.json：安装会通过 skills CLI 按锁定规则处理，不会绕过或手工修改锁文件。',
         'local.title': '链接本地技能目录', 'local.target': '目标目录（需包含 SKILL.md）',
         'local.name': '技能名（留空取目录名）', 'local.submit': '创建软链',
         'local.copyFallback': 'Windows 无软链权限时降级为拷贝，并在结果中提示。',
@@ -164,7 +164,7 @@ window.__ModuleLoader__.load({
         'market.title': 'Market search', 'market.query': 'Search skills (skills.sh)', 'market.search': 'Search',
         'market.install': 'Install', 'market.installing': 'Installing…', 'market.empty': 'No results',
         'market.lowTrust': 'Weak community validation (< 100 installs): verify the source before installing.',
-        'market.lockfile': 'skills-lock.json detected: install refused to respect the ecosystem lock.',
+        'market.lockfile': 'skills-lock.json detected: installs run through the official CLI, which honors and updates the lockfile; it is never edited or bypassed here.',
         'local.title': 'Link a local skill directory', 'local.target': 'Target directory (must contain SKILL.md)',
         'local.name': 'Skill name (defaults to directory name)', 'local.submit': 'Create link',
         'local.copyFallback': 'On Windows without link privilege this degrades to a copy, noted in the result.',
@@ -605,7 +605,7 @@ window.__ModuleLoader__.load({
           } }))
         return modalShell(t('market.title'), el('div', null,
           searchRow,
-          S.view && S.view.lockfiles && S.view.lockfiles.length > 0 ? el('div', { class: 'skb-notice skb-notice--warn', text: t('market.lockfile') }) : null,
+          S.view && S.view.lockfiles && S.view.lockfiles.length > 0 ? el('div', { class: 'skb-notice', text: t('market.lockfile') + ' ' + S.view.lockfiles[0].path }) : null,
           S.market.searched && S.market.rows.length === 0 ? el('div', { class: 'skb-empty', text: t('market.empty') }) : null,
           rows))
       }

@@ -162,20 +162,18 @@ export class SkillsCli {
   }
 
   /**
-   * Install via the CLI. Honors the lockfile gate: refuses when a lockfile is
-   * present unless `respectLockfile` explicitly allows the write.
+   * Install through the official CLI. A lockfile is NOT a reason to refuse:
+   * `skills add` itself is the supported way to add a skill while honoring
+   * and updating the lock. We never edit or bypass skills-lock.json by hand.
    */
   async add(pkg, { scope = 'global', agents = ['agents'], yes = true } = {}) {
     const scopeDir = scope === 'global' ? osHome() : this.cwd
     const lock = this.lockfileStatus(scopeDir)
-    if (lock.present) {
-      return { ok: false, code: 'lockfile-present', reason: '存在 skills-lock.json，按生态约定不绕过锁文件安装', lockfile: lock.path }
-    }
     const args = ['add', pkg, scope === 'global' ? '-g' : '-p', '-a', agents.join(','), '-y']
     const result = await run(args, { cwd: this.cwd, timeout: 120000 })
     const output = clean(result.stdout + '\n' + result.stderr)
-    if (!result.ok) return { ok: false, reason: output.slice(0, 500) || '安装失败' }
-    return { ok: true, output: output.slice(0, 1000) }
+    if (!result.ok) return { ok: false, reason: output.slice(0, 500) || '安装失败', lockfile: lock.present ? lock.path : null }
+    return { ok: true, output: output.slice(0, 1000), lockfile: lock.present ? lock.path : null }
   }
 
   async remove(names, { scope = 'global' } = {}) {
