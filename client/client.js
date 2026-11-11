@@ -190,6 +190,8 @@ window.__ModuleLoader__.load({
       var dict = DICT[currentLang] || DICT.zh
       return dict[key] || DICT.zh[key] || key
     }
+    function b(zh, en) { return currentLang === 'zh' ? zh : en }
+
     function issueText(code) {
       var text = String(code)
       var base = text.split(':')[0]
@@ -455,12 +457,12 @@ window.__ModuleLoader__.load({
       if (S.busy) return
       setState({ busy: true, notice: null })
       api('/refresh', {}).then(function (result) {
-        const count = result.skills ? result.skills.length : 0
+        const count = typeof result.dsh === 'number' ? result.dsh : (result.skills ? result.skills.length : 0)
         return load().then(function () {
-          setState({ notice: { kind: 'ok', text: '刷新成功，共 ' + count + ' 个技能' } })
+          setState({ notice: { kind: 'ok', text: b('刷新成功：扫描 ' + (result.scanned || count) + ' 条记录，DSH 可管理 ' + count + ' 个技能', 'Refreshed: ' + (result.scanned || count) + ' records, ' + count + ' DSH skills') } })
         })
       }).catch(function (e) {
-        setState({ notice: { kind: 'error', text: '刷新失败：' + e.message } })
+        setState({ notice: { kind: 'error', text: b('刷新失败：' + e.message, 'Refresh failed: ' + e.message) } })
       }).finally(function () { setState({ busy: false }) })
     }
 
@@ -576,7 +578,7 @@ window.__ModuleLoader__.load({
         body.appendChild(meta)
         if (d.record.sources && d.record.sources.length > 1) {
           body.appendChild(el('h3', { class: 'skb-section-title', text: t('section.sources') }))
-          body.appendChild(el('pre', { class: 'skb-pre', text: d.record.sources.map(function (source) { return source.dir + (source.scope === 'project' ? ' [project]' : ' [global]') }).join('\n') }))
+          body.appendChild(el('pre', { class: 'skb-pre', text: d.record.sources.map(function (source) { return source.dir + ' [' + (source.agent || source.scope) + ']' }).join('\n') }))
         }
         if (d.health.issues.length > 0) {
           body.appendChild(el('h3', { class: 'skb-section-title', text: t('section.health') }))
@@ -673,13 +675,13 @@ window.__ModuleLoader__.load({
           return installCount(b.installs) - installCount(a.installs)
         })
         var searchRow = el('div', { class: 'skb-market-search' },
-          el('input', { class: 'skb-input', value: m.query, placeholder: '输入技能关键词，如 mcp、测试、浏览器',
+          el('input', { class: 'skb-input', value: m.query, placeholder: b('输入技能关键词，如 mcp、测试、浏览器', 'Search skills by keyword, e.g. mcp, tests, browser'),
             oninput: function (e) { m.query = e.target.value },
             onkeydown: function (e) { if (e.key === 'Enter') searchMarket() } }),
           el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('market.search'), disabled: !!m.loading, onclick: searchMarket }))
         function searchMarket() {
           if (!String(m.query || '').trim()) {
-            setState({ market: { ...m, error: '请输入技能关键词' } })
+            setState({ market: { ...m, error: b('请输入技能关键词', 'Enter a skill keyword') } })
             return
           }
           setState({ market: { ...m, loading: true, error: null, searched: false } })
@@ -706,12 +708,12 @@ window.__ModuleLoader__.load({
           el('select', { class: 'skb-select', value: m.source || 'skills', onchange: onSourceChange },
             enabledSources.map(function (src) { return el('option', { value: src.id, text: src.name, selected: (m.source || 'skills') === src.id || null }) })),
           el('select', { class: 'skb-select', value: sort, onchange: onSortChange },
-            el('option', { value: 'installs', text: '按下载量' }),
-            el('option', { value: 'stars', text: '按星标' }),
-            el('option', { value: 'updated', text: '按最近更新' }),
-            el('option', { value: 'name', text: '按名称' })),
-          el('input', { class: 'skb-input skb-author-filter', value: m.author || '', placeholder: '作者筛选', oninput: function (e) { m.author = e.target.value } }),
-          el('button', { class: 'skb-btn', type: 'button', text: m.configOpen ? '收起来源配置' : '来源配置', onclick: onConfigToggle }))
+            el('option', { value: 'installs', text: b('按下载量', 'Downloads') }),
+            el('option', { value: 'stars', text: b('按星标', 'Stars') }),
+            el('option', { value: 'updated', text: b('按最近更新', 'Recently updated') }),
+            el('option', { value: 'name', text: b('按名称', 'Name') })),
+          el('input', { class: 'skb-input skb-author-filter', value: m.author || '', placeholder: b('作者筛选', 'Filter by author'), oninput: function (e) { m.author = e.target.value } }),
+          el('button', { class: 'skb-btn', type: 'button', text: m.configOpen ? b('收起来源配置', 'Hide sources') : b('来源配置', 'Configure sources'), onclick: onConfigToggle }))
         var config = null
         if (m.configOpen) {
           config = el('div', { class: 'skb-source-config' },
@@ -723,31 +725,31 @@ window.__ModuleLoader__.load({
                     setState({ market: { ...m, sources } })
                   } }),
                   ' ' + src.name + '（' + src.type + '）'),
-                ['skills', 'github', 'skillhub'].indexOf(src.id) < 0 ? el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: '删除', onclick: function () {
+                ['skills', 'github', 'skillhub'].indexOf(src.id) < 0 ? el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: b('删除', 'Delete'), onclick: function () {
                   setState({ market: { ...m, sources: m.sources.filter((x) => x.id !== src.id) } })
                 } }) : null)
             }),
             el('div', { class: 'skb-source-new' },
-              el('input', { class: 'skb-input', value: m.newName || '', placeholder: '新来源名称', oninput: function (e) { m.newName = e.target.value } }),
-              el('input', { class: 'skb-input', value: m.newSuffix || '', placeholder: 'GitHub 搜索限定（如 topic:skills）', oninput: function (e) { m.newSuffix = e.target.value } }),
-              el('button', { class: 'skb-btn', type: 'button', text: '新增 GitHub 来源', onclick: function () {
+              el('input', { class: 'skb-input', value: m.newName || '', placeholder: b('新来源名称', 'New source name'), oninput: function (e) { m.newName = e.target.value } }),
+              el('input', { class: 'skb-input', value: m.newSuffix || '', placeholder: b('GitHub 搜索限定（如 topic:skills）', 'GitHub query filter (e.g. topic:skills)'), oninput: function (e) { m.newSuffix = e.target.value } }),
+              el('button', { class: 'skb-btn', type: 'button', text: b('新增 GitHub 来源', 'Add GitHub source'), onclick: function () {
                 if (!m.newName || !m.newName.trim()) return
                 const source = { id: 'github-custom-' + Date.now(), name: m.newName.trim(), type: 'github', enabled: true, querySuffix: (m.newSuffix || '').trim() }
                 setState({ market: { ...m, sources: [...m.sources, source], newName: '', newSuffix: '' } })
               } })),
             el('div', null,
-              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: '保存来源配置', onclick: function () {
+              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: b('保存来源配置', 'Save sources'), onclick: function () {
                 api('/market/sources', { sources: m.sources }).then(function () {
-                  setState({ market: { ...m, configOpen: false }, notice: { kind: 'ok', text: '来源配置已保存' } })
+                  setState({ market: { ...m, configOpen: false }, notice: { kind: 'ok', text: b('来源配置已保存', 'Sources saved') } })
                 }).catch(function (e) { setState({ notice: { kind: 'error', text: e.message } }) })
               } })))
         }
         var body = el('div', null, searchRow, filterRow, config)
         if (m.loading) {
-          body.appendChild(el('div', { class: 'skb-loading', role: 'status' }, el('span', { class: 'skb-spinner' }), '正在搜索，请稍候…'))
+          body.appendChild(el('div', { class: 'skb-loading', role: 'status' }, el('span', { class: 'skb-spinner' }), b('正在搜索，请稍候…', 'Searching…')))
         } else if (m.error) {
           body.appendChild(el('div', { class: 'skb-notice skb-notice--warn', text: m.error }))
-          if (m.installGuide) body.appendChild(el('a', { href: m.installGuide, target: '_blank', rel: 'noreferrer', text: 'SkillHub 安装说明（官方）' }))
+          if (m.installGuide) body.appendChild(el('a', { href: m.installGuide, target: '_blank', rel: 'noreferrer', text: b('SkillHub 安装说明（官方）', 'SkillHub installation guide') }))
         } else if (m.searched && rows.length === 0) {
           body.appendChild(el('div', { class: 'skb-empty', text: t('market.empty') }))
         } else {
@@ -757,8 +759,8 @@ window.__ModuleLoader__.load({
                 el('div', { class: 'skb-market-ref', text: row.ref }),
                 el('div', { class: 'skb-market-desc', text: row.description || '' }),
                 el('div', { class: 'skb-market-meta' },
-                  '⭐ ' + compactNumber(row.stars) + ' · ⬇ ' + (row.installs || '—') + ' · 版本 ' + (row.version || '未标注') + ' · 更新 ' + (formatTime(row.updatedAt) || '—')),
-                el('div', { class: 'skb-market-meta' }, '作者 ' + (row.author || '—') + ' · 来源 ' + (row.sourceName || row.source))),
+                  '⭐ ' + compactNumber(row.stars) + ' · ⬇ ' + (row.installs || '—') + b(' · 版本 ', ' · Version ') + (row.version || b('未标注', 'unversioned')) + b(' · 更新 ', ' · Updated ') + (formatTime(row.updatedAt) || '—')),
+                el('div', { class: 'skb-market-meta' }, b('作者 ' + (row.author || '—') + ' · 来源 ' + (row.sourceName || row.source), 'Author ' + (row.author || '—') + ' · Source ' + (row.sourceName || row.source)))),
               el('button', { class: 'skb-btn skb-btn--primary', type: 'button', disabled: m.installing !== null,
                 text: m.installing === row.ref ? t('market.installing') : t('market.install'),
                 onclick: function () {
@@ -771,7 +773,7 @@ window.__ModuleLoader__.load({
                     if (result.ok === false) {
                       setState({ market: { ...m, installing: null, error: result.reason || '安装失败', installGuide: result.installGuide || null } })
                     } else {
-                      setState({ market: { ...m, installing: null }, notice: { kind: 'ok', text: row.ref + ' 已安装' }, modal: null })
+                      setState({ market: { ...m, installing: null }, notice: { kind: 'ok', text: row.ref + b(' 已安装', ' installed') }, modal: null })
                       load()
                     }
                   }).catch(function (e) {
@@ -811,11 +813,11 @@ window.__ModuleLoader__.load({
         function saveRemotes() {
           S.sync.busy = true; render()
           api('/sync/remotes', { remotes: sync.remotes }).then(function (result) {
-            setState({ sync: { ...S.sync, remotes: result.remotes, busy: false, form: null, editingId: null, notice: { kind: 'ok', text: '远端配置已保存' } } })
+            setState({ sync: { ...S.sync, remotes: result.remotes, busy: false, form: null, editingId: null, notice: { kind: 'ok', text: b('远端配置已保存', 'Remote configuration saved') } } })
           }).catch(function (e) { setState({ sync: { ...S.sync, busy: false, error: e.message } }) })
         }
         function addOrUpdateRemote() {
-          if (!form.url.trim()) { setState({ sync: { ...sync, error: '请填写远端地址' } }); return }
+          if (!form.url.trim()) { setState({ sync: { ...sync, error: b('请填写远端地址', 'Enter a remote URL') } }); return }
           const remote = {
             id: sync.editingId || 'remote-' + Date.now().toString(36),
             name: form.name.trim() || form.url.trim(),
@@ -833,7 +835,7 @@ window.__ModuleLoader__.load({
         var body = el('div', null,
           el('div', { class: 'skb-notice', text: t('sync.note') }),
           el('div', { class: 'skb-remotes' },
-            sync.remotes.length === 0 ? el('div', { class: 'skb-empty', text: '还没有远端，先在下方添加' }) : null,
+            sync.remotes.length === 0 ? el('div', { class: 'skb-empty', text: b('还没有远端，先在下方添加', 'No remotes yet; add one below') }) : null,
             sync.remotes.map(function (remote) {
               const selected = sync.selected.includes(remote.id)
               return el('div', { class: 'skb-remote-row' },
@@ -844,48 +846,48 @@ window.__ModuleLoader__.load({
                 el('div', { class: 'skb-remote-main' },
                   el('div', { class: 'skb-market-ref', text: remote.name + ' · ' + remote.type }),
                   el('div', { class: 'skb-market-meta', text: remote.url }),
-                  el('div', { class: 'skb-market-meta', text: remote.hasCredential ? '已配置凭据' : '使用本机 git/SSH 凭据' }),
+                  el('div', { class: 'skb-market-meta', text: remote.hasCredential ? b('已配置凭据', 'Credentials saved') : b('使用本机 git/SSH 凭据', 'Using local git/SSH credentials') }),
                   sync.testResults && sync.testResults[remote.id] ? el('div', { class: 'skb-test-result', text: sync.testResults[remote.id].message }) : null),
                 el('div', { class: 'skb-remote-actions' },
-                  el('button', { class: 'skb-btn', type: 'button', text: '测试连接', onclick: function () {
+                  el('button', { class: 'skb-btn', type: 'button', text: b('测试连接', 'Test connection'), onclick: function () {
                     api('/sync/test', { remoteId: remote.id }).then(function (result) {
                       setState({ sync: { ...S.sync, testResults: { ...(S.sync.testResults || {}), [remote.id]: result } } })
                     }).catch(function (e) { setState({ sync: { ...S.sync, error: e.message } }) })
                   } }),
-                  el('button', { class: 'skb-btn', type: 'button', text: '编辑', onclick: function () {
+                  el('button', { class: 'skb-btn', type: 'button', text: b('编辑', 'Edit'), onclick: function () {
                     setState({ sync: { ...sync, editingId: remote.id, form: { ...remote, password: '' } } })
                   } }),
-                  el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: '删除', onclick: function () {
+                  el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: b('删除', 'Delete'), onclick: function () {
                     setState({ sync: { ...sync, remotes: sync.remotes.filter((r) => r.id !== remote.id), selected: sync.selected.filter((id) => id !== remote.id) } })
                   } })))
             })),
           el('div', { class: 'skb-sync-form' },
-            el('input', { class: 'skb-input', value: form.name, placeholder: '远端名称', oninput: function (e) { updateForm({ name: e.target.value }) } }),
+            el('input', { class: 'skb-input', value: form.name, placeholder: b('远端名称', 'Remote name'), oninput: function (e) { updateForm({ name: e.target.value }) } }),
             el('select', { class: 'skb-select', value: form.type, onchange: function (e) { updateForm({ type: e.target.value }) } },
               el('option', { value: 'github', text: 'GitHub' }),
               el('option', { value: 'gitee', text: 'Gitee' }),
-              el('option', { value: 'gitlab', text: 'GitLab/公司内网' }),
-              el('option', { value: 'custom', text: '自定义 Git' }),
-              el('option', { value: 'file', text: '本地 file://' })),
-            el('input', { class: 'skb-input wide', value: form.url, placeholder: 'https://github.com/owner/repo.git 或 git@host:team/repo.git', oninput: function (e) { updateForm({ url: e.target.value }) } }),
-            el('input', { class: 'skb-input', value: form.username, placeholder: '用户名（可选）', oninput: function (e) { updateForm({ username: e.target.value }) } }),
-            el('input', { class: 'skb-input', type: 'password', value: form.password, placeholder: '密码/Token（仅本机保存）', oninput: function (e) { updateForm({ password: e.target.value }) } }),
+              el('option', { value: 'gitlab', text: b('GitLab/公司内网', 'GitLab / self-hosted') }),
+              el('option', { value: 'custom', text: b('自定义 Git', 'Custom Git') }),
+              el('option', { value: 'file', text: b('本地 file://', 'Local file://') })),
+            el('input', { class: 'skb-input wide', value: form.url, placeholder: 'https://github.com/owner/repo.git / git@host:team/repo.git', oninput: function (e) { updateForm({ url: e.target.value }) } }),
+            el('input', { class: 'skb-input', value: form.username, placeholder: b('用户名（可选）', 'Username (optional)'), oninput: function (e) { updateForm({ username: e.target.value }) } }),
+            el('input', { class: 'skb-input', type: 'password', value: form.password, placeholder: b('密码/Token（仅本机保存）', 'Password/token (stored locally only)'), oninput: function (e) { updateForm({ password: e.target.value }) } }),
             el('label', { class: 'wide' },
               el('input', { type: 'checkbox', checked: !!form.insecureSkipTls, onchange: function (e) { updateForm({ insecureSkipTls: e.target.checked }) } }),
-              ' 内网自签名证书时跳过 TLS 校验（谨慎）'),
+              b(' 内网自签名证书时跳过 TLS 校验（谨慎）', ' Skip TLS verification for self-signed certificates (careful)')),
             el('div', null,
-              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: sync.editingId ? '更新远端' : '添加远端', onclick: addOrUpdateRemote }),
-              el('button', { class: 'skb-btn', type: 'button', text: '保存全部远端', disabled: !!sync.busy, onclick: saveRemotes }))),
+              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: sync.editingId ? b('更新远端', 'Update remote') : b('添加远端', 'Add remote'), onclick: addOrUpdateRemote }),
+              el('button', { class: 'skb-btn', type: 'button', text: b('保存全部远端', 'Save all remotes'), disabled: !!sync.busy, onclick: saveRemotes }))),
           sync.error ? el('div', { class: 'skb-notice skb-notice--error', text: sync.error }) : null,
           sync.notice ? el('div', { class: 'skb-notice skb-notice--' + sync.notice.kind, text: sync.notice.text }) : null,
           el('div', { style: { display: 'flex', gap: '8px' } },
-            el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: '推送所选', disabled: !!sync.busy || sync.selected.length === 0, onclick: function () {
+            el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: b('推送所选', 'Push selected'), disabled: !!sync.busy || sync.selected.length === 0, onclick: function () {
               S.sync.busy = true; render()
               api('/sync/push', { remoteIds: sync.selected }).then(function (result) {
                 setState({ sync: { ...S.sync, busy: false, pushResults: result.results || [], error: result.ok === false && !result.results ? result.reason : null } })
               }).catch(function (e) { setState({ sync: { ...S.sync, busy: false, error: e.message } }) })
             } }),
-            el('button', { class: 'skb-btn', type: 'button', text: '拉取所选', disabled: !!sync.busy || sync.selected.length === 0, onclick: function () {
+            el('button', { class: 'skb-btn', type: 'button', text: b('拉取所选', 'Pull selected'), disabled: !!sync.busy || sync.selected.length === 0, onclick: function () {
               S.sync.busy = true; render()
               api('/sync/pull', { remoteIds: sync.selected }).then(function (result) {
                 setState({ sync: { ...S.sync, busy: false, pullResults: result.results || [], error: result.ok === false && !result.results ? result.reason : null } })
@@ -894,7 +896,7 @@ window.__ModuleLoader__.load({
           sync.pushResults && sync.pushResults.length ? el('div', { class: 'skb-sync-results' },
             sync.pushResults.map(function (result) {
               const remote = sync.remotes.find((r) => r.id === result.remoteId)
-              return el('div', { class: 'skb-notice skb-notice--' + (result.ok ? 'ok' : 'error'), text: (remote ? remote.name : result.remoteId) + ' · ' + (result.ok ? (result.changed ? '已推送' : '无变化') : result.error) })
+              return el('div', { class: 'skb-notice skb-notice--' + (result.ok ? 'ok' : 'error'), text: (remote ? remote.name : result.remoteId) + ' · ' + (result.ok ? (result.changed ? b('已推送', 'Pushed') : b('无变化', 'No changes')) : result.error) })
             })) : null,
           sync.pullResults && sync.pullResults.length ? el('div', { class: 'skb-sync-results' },
             sync.pullResults.map(function (result) {
@@ -902,7 +904,7 @@ window.__ModuleLoader__.load({
               if (!result.ok) return el('div', { class: 'skb-notice skb-notice--error', text: (remote ? remote.name : result.remoteId) + ' · ' + result.error })
               const skills = result.manifest.skills || []
               return el('div', null,
-                el('h3', { class: 'skb-section-title', text: (remote ? remote.name : result.remoteId) + ' · ' + skills.length + ' 个技能' }),
+                el('h3', { class: 'skb-section-title', text: (remote ? remote.name : result.remoteId) + ' · ' + skills.length + b(' 个技能', ' skills') }),
                 skills.length === 0 ? el('div', { class: 'skb-empty', text: t('sync.empty') }) : null,
                 skills.map(function (item) {
                   return el('div', { class: 'skb-market-row' },
@@ -982,7 +984,7 @@ window.__ModuleLoader__.load({
           try {
             const dir = await pickDirectory()
             if (dir) await mutate('/roots/add', { dir: dir })
-            else setState({ notice: { kind: 'warn', text: '未选择目录或当前环境不支持目录选择器' } })
+            else setState({ notice: { kind: 'warn', text: b('未选择目录或当前环境不支持目录选择器', 'No directory selected or picker unavailable') } })
           } catch (e) {
             setState({ notice: { kind: 'error', text: e.message || String(e) } })
           }
@@ -1001,7 +1003,7 @@ window.__ModuleLoader__.load({
           el('h1', { class: 'skb-title', text: t('panel.title') }),
           el('p', { class: 'skb-subtitle', text: t('panel.subtitle') })),
         el('div', { class: 'skb-actions' },
-          el('button', { class: 'skb-btn', type: 'button', text: S.busy ? '刷新中…' : t('action.refresh'), disabled: !!S.busy, onclick: refreshAll }),
+          el('button', { class: 'skb-btn', type: 'button', text: S.busy ? b('刷新中…', 'Refreshing…') : t('action.refresh'), disabled: !!S.busy, onclick: refreshAll }),
           el('button', { class: 'skb-btn', type: 'button', text: t('action.roots'), onclick: function () {
             setState({ modal: 'roots', rootsSnapshot: null })
             load().then(function (d) { if (d) setState({ rootsSnapshot: d.roots }) })
@@ -1156,12 +1158,19 @@ window.__ModuleLoader__.load({
           if (ctx.locale && typeof ctx.locale.register === 'function') {
             try { ctx.locale.register(NS, { zh: DICT.zh, en: DICT.en }) } catch (e) { /* duplicate ns on HMR */ }
           }
-          try {
-            if (ctx.locale && typeof ctx.locale.bind === 'function' && ctx.locale.getLocale) {
-              var loc = ctx.locale.getLocale()
-              if (loc && loc.id === 'en') currentLang = 'en'
-            }
-          } catch (e) { /* keep zh */ }
+          var followLocale = function () {
+            try {
+              var snapshot = ctx.locale && ctx.locale.getLocale ? ctx.locale.getLocale() : null
+              var active = snapshot && snapshot.active ? snapshot.active : 'zh'
+              var next = /^en/i.test(active) ? 'en' : 'zh'
+              if (next !== currentLang) {
+                currentLang = next
+                render()
+              }
+            } catch (e) { /* keep current language */ }
+          }
+          followLocale()
+          var localeDispose = ctx.locale && typeof ctx.locale.subscribe === 'function' ? ctx.locale.subscribe(followLocale) : null
           sessionIdProvider = function () {
             try {
               var store = ctx.sessions && ctx.sessions.list
@@ -1174,6 +1183,7 @@ window.__ModuleLoader__.load({
           startSelfHost()
           load()
           return function () {
+            if (localeDispose) localeDispose()
             if (alignTimer) clearInterval(alignTimer)
             if (window.__skbAlignObserver) { try { window.__skbAlignObserver.disconnect() } catch (e) { /* noop */ } window.__skbAlignObserver = null }
             window.removeEventListener('resize', align)
@@ -1191,7 +1201,7 @@ window.__ModuleLoader__.load({
               id: SECTION_ID,
               order: 19,
               locale: NS,
-              label: function () { try { return t('nav') } catch (e) { return '技能' } },
+              label: function () { try { return t('nav') } catch (e) { return b('技能', 'Skills') } },
               inject: function () { return {} }
             }, function SkillsSentinel() { return null })
           })

@@ -96,6 +96,11 @@ export class SkillsManager {
     if (changed) this.store.write({ ...state, skills, dshDisabled: [...disabledSet] })
   }
 
+  refreshSummary() {
+    const records = this.refresh()
+    return { ok: true, scanned: records.length, dsh: this.dshGroups().length }
+  }
+
   records() {
     const state = this.store.state()
     if (!this._records) return this.refresh()
@@ -205,20 +210,36 @@ export class SkillsManager {
         return bm - am
       })
       const preferred = sorted[0]
-      return {
-        ...preferred,
-        mtime: preferred.brokenLink ? 0 : safePeek(preferred).mtime || 0,
-        conflict: group.length > 1,
-        shadowed: group.some((s) => s.scope === 'project') && preferred.scope === 'global',
-        sources: sorted.map((source) => ({
+      const external = this.records().filter((source) => source.name === preferred.name && source.agent !== 'agents')
+      const sources = [
+        ...sorted.map((source) => ({
           dir: source.dir,
           scope: source.scope,
+          agent: source.agent,
           origin: source.origin,
           sourceRef: source.sourceRef,
           linkedFrom: source.linkedFrom,
           mtime: source.brokenLink ? 0 : safePeek(source).mtime || 0,
           disabled: source.disabled
+        })),
+        ...external.map((source) => ({
+          dir: source.dir,
+          scope: source.scope,
+          agent: source.agent,
+          origin: source.origin,
+          sourceRef: source.sourceRef,
+          linkedFrom: source.linkedFrom,
+          mtime: source.brokenLink ? 0 : safePeek(source).mtime || 0,
+          disabled: source.disabled,
+          external: true
         }))
+      ]
+      return {
+        ...preferred,
+        mtime: preferred.brokenLink ? 0 : safePeek(preferred).mtime || 0,
+        conflict: sources.length > 1,
+        shadowed: group.some((s) => s.scope === 'project') && preferred.scope === 'global',
+        sources
       }
     })
   }

@@ -59,12 +59,19 @@ export function registerRoutes(webServer, connection, manager) {
         sendJson(response, 400, errorPayload(error))
       }
     }
-    const dispose = webServer.register({ kind: 'exact', path: PREFIX + path, handler })
-    disposers.push(dispose)
+    try {
+      const dispose = webServer.register({ kind: 'exact', path: PREFIX + path, handler })
+      disposers.push(dispose)
+    } catch (error) {
+      // One duplicate or malformed route must not block every later route.
+      try {
+        manager.store.log({ op: 'route-error', message: path + ': ' + String((error && error.message) || error), status: 'error' })
+      } catch { /* logging must never break route registration */ }
+    }
   }
 
   route('/view', ['GET'], (ctx) => manager.view(ctx.url.searchParams.get('sessionId') || undefined))
-  route('/refresh', ['POST'], () => ({ ok: true, skills: manager.refresh() }))
+  route('/refresh', ['POST'], () => manager.refreshSummary())
   route('/detail', ['GET'], (ctx) => manager.detail(ctx.url.searchParams.get('name'), ctx.url.searchParams.get('dir') || undefined))
   route('/health', ['GET'], () => manager.health())
 
@@ -82,8 +89,9 @@ export function registerRoutes(webServer, connection, manager) {
   route('/roots/remove', ['POST'], (ctx) => manager.opRemoveCustomRoot(ctx.body.dir))
 
   route('/market/search', ['POST'], (ctx) => manager.marketSearch(ctx.body.source, ctx.body.query))
-  route('/market/sources', ['GET'], () => ({ ok: true, sources: manager.marketSources() }))
-  route('/market/sources', ['POST'], (ctx) => manager.saveMarketSources(ctx.body.sources))
+  route('/market/sources', ['GET', 'POST'], (ctx) => ctx.method === 'GET'
+    ? { ok: true, sources: manager.marketSources() }
+    : manager.saveMarketSources(ctx.body.sources))
   route('/skillhub/install', ['POST'], (ctx) => manager.skillhubInstall(ctx.body.name, ctx.body.source))
 
   route('/cli/find', ['POST'], (ctx) => manager.cliFind(ctx.body.query))
@@ -91,8 +99,9 @@ export function registerRoutes(webServer, connection, manager) {
   route('/cli/update', ['POST'], (ctx) => manager.cliUpdate(ctx.body.names, { scope: ctx.body.scope || 'global' }))
   route('/cli/remove', ['POST'], (ctx) => manager.cliRemove(ctx.body.names, { scope: ctx.body.scope || 'global' }))
 
-  route('/sync/remotes', ['GET'], () => ({ ok: true, remotes: manager.syncRemotes() }))
-  route('/sync/remotes', ['POST'], (ctx) => manager.saveSyncRemotes(ctx.body.remotes))
+  route('/sync/remotes', ['GET', 'POST'], (ctx) => ctx.method === 'GET'
+    ? { ok: true, remotes: manager.syncRemotes() }
+    : manager.saveSyncRemotes(ctx.body.remotes))
   route('/sync/test', ['POST'], (ctx) => manager.syncTest(ctx.body.remoteId))
   route('/sync/push', ['POST'], (ctx) => manager.syncPush(ctx.body.remoteIds))
   route('/sync/pull', ['POST'], (ctx) => manager.syncPull(ctx.body.remoteIds))
