@@ -93,6 +93,7 @@ export class SkillStore {
     this._state = null
     this._hash = null
     this._watcher = null
+    this._poll = null
     this._watchers = new Set()
   }
 
@@ -165,6 +166,7 @@ export class SkillStore {
     let timer = null
     let closed = false
     const fire = () => {
+      if (closed) return
       let text = null
       try { text = fs.readFileSync(this.file, 'utf8') } catch { return }
       const hash = hashText(text)
@@ -185,13 +187,18 @@ export class SkillStore {
       })
       if (this._watcher.unref) this._watcher.unref()
       if (this._watcher.on) this._watcher.on('error', () => {})
-    } catch { /* watcher unavailable: polling falls back to manual refresh */ }
+    } catch { /* fs.watch is best-effort; polling below still detects edits */ }
+    if (this._poll) clearInterval(this._poll)
+    const poll = setInterval(fire, 250)
+    if (poll.unref) poll.unref()
+    this._poll = poll
     const entry = (state) => listener(state)
     this._watchers.add(entry)
     return () => {
       closed = true
       this._watchers.delete(entry)
       if (timer) clearTimeout(timer)
+      if (this._poll === poll) { clearInterval(poll); this._poll = null }
       if (this._watcher) { try { this._watcher.close() } catch { /* noop */ } this._watcher = null }
     }
   }
@@ -217,6 +224,7 @@ export class SkillStore {
   }
 
   dispose() {
+    if (this._poll) { clearInterval(this._poll); this._poll = null }
     if (this._watcher) { try { this._watcher.close() } catch { /* noop */ } this._watcher = null }
     this._watchers.clear()
   }

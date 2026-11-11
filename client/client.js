@@ -367,7 +367,7 @@ window.__ModuleLoader__.load({
 '.skb-log-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--dsw-alias-border-l1,#2a2a2a);font-size:12.5px}' +
 '.skb-log-row:last-child{border-bottom:none}.skb-log-time{color:var(--dsw-alias-label-secondary,#999);flex:none;width:150px}' +
 '.skb-mutating{opacity:.55;pointer-events:none}' +
-'.skb-remotes{display:flex;flex-direction:column;gap:8px}.skb-remote-row{display:flex;gap:8px;align-items:flex-start;padding:10px;border:1px solid var(--dsw-alias-border-l1,#333);border-radius:10px}.skb-remote-main{flex:1;min-width:0}.skb-remote-actions{display:flex;gap:6px;flex-wrap:wrap}.skb-sync-form{display:grid;grid-template-columns:1fr 1fr;gap:8px}.skb-sync-form .wide{grid-column:1/-1}.skb-sync-results{display:flex;flex-direction:column;gap:10px}.skb-test-result{font-size:12px}' +
+'.skb-remotes{display:flex;flex-direction:column;gap:8px}.skb-remote-row{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--dsw-alias-border-l1,#333);border-radius:10px}.skb-remote-main{flex:1;min-width:0}.skb-remote-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.skb-sync-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.skb-sync-form .wide{grid-column:1/-1}.skb-sync-results{display:flex;flex-direction:column;gap:10px}.skb-test-result{font-size:12px}.skb-sync-toolbar,.skb-sync-settings-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 12px}.skb-sync-settings-head{justify-content:flex-start}.skb-sync-settings-head .skb-section-title,.skb-sync-toolbar .skb-section-title{margin:0}.skb-sync-settings-actions{grid-column:1/-1;display:flex;gap:8px;margin-top:4px}' +
 '.skb-market-search{display:flex;gap:8px}.skb-market-search .skb-input{flex:1}' +
 '.skb-market-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}' +
 '.skb-author-filter{flex:1;min-width:120px}' +
@@ -823,78 +823,91 @@ window.__ModuleLoader__.load({
           }).catch(function (e) { setState({ sync: { ...S.sync, error: e.message } }) })
         }
         var form = sync.form || { name: '', type: 'github', url: '', username: '', password: '', insecureSkipTls: false }
-        function updateForm(patch) { S.sync.form = { ...form, ...patch } }
-        function saveRemotes() {
+        function updateForm(patch) { form = { ...form, ...patch }; S.sync.form = form }
+        function openSettings(remote) {
+          setState({ sync: { ...S.sync, screen: 'settings', editingId: remote ? remote.id : null,
+            form: remote ? { ...remote, password: '' } : { name: '', type: 'github', url: '', username: '', password: '', insecureSkipTls: false }, error: null } })
+        }
+        function persistRemotes(remotes, message) {
           S.sync.busy = true; render()
-          api('/sync/remotes', { remotes: sync.remotes }).then(function (result) {
-            setState({ sync: { ...S.sync, remotes: result.remotes, busy: false, form: null, editingId: null, notice: { kind: 'ok', text: b('远端配置已保存', 'Remote configuration saved') } } })
+          api('/sync/remotes', { remotes }).then(function (result) {
+            setState({ sync: { ...S.sync, remotes: result.remotes, busy: false, screen: 'list', form: null, editingId: null,
+              notice: { kind: 'ok', text: message } } })
           }).catch(function (e) { setState({ sync: { ...S.sync, busy: false, error: e.message } }) })
         }
-        function addOrUpdateRemote() {
-          if (!form.url.trim()) { setState({ sync: { ...sync, error: b('请填写远端地址', 'Enter a remote URL') } }); return }
+        function saveRemote() {
+          if (!form.url.trim()) { setState({ sync: { ...S.sync, error: b('请填写远端地址', 'Enter a remote URL') } }); return }
           const remote = {
             id: sync.editingId || 'remote-' + Date.now().toString(36),
-            name: form.name.trim() || form.url.trim(),
-            type: form.type,
-            url: form.url.trim(),
-            username: form.username || '',
-            password: form.password || '',
-            insecureSkipTls: !!form.insecureSkipTls,
-            enabled: true
+            name: form.name.trim() || form.url.trim(), type: form.type, url: form.url.trim(),
+            username: form.username || '', password: form.password || '', insecureSkipTls: !!form.insecureSkipTls, enabled: true
           }
           const exists = sync.remotes.some((r) => r.id === remote.id)
           const remotes = exists ? sync.remotes.map((r) => r.id === remote.id ? { ...r, ...remote } : r) : [...sync.remotes, remote]
-          setState({ sync: { ...sync, remotes, selected: Array.from(new Set([...sync.selected, remote.id])), form: null, editingId: null, error: null } })
+          S.sync.selected = Array.from(new Set([...sync.selected, remote.id]))
+          persistRemotes(remotes, b('远端设置已保存', 'Remote settings saved'))
         }
         var body = el('div', null,
           el('div', { class: 'skb-notice', text: t('sync.note') }),
-          el('div', { class: 'skb-remotes' },
-            sync.remotes.length === 0 ? el('div', { class: 'skb-empty', text: b('还没有远端，先在下方添加', 'No remotes yet; add one below') }) : null,
-            sync.remotes.map(function (remote) {
-              const selected = sync.selected.includes(remote.id)
-              return el('div', { class: 'skb-remote-row' },
-                el('input', { type: 'checkbox', checked: selected, onchange: function (e) {
-                  const selectedIds = e.target.checked ? [...sync.selected, remote.id] : sync.selected.filter((id) => id !== remote.id)
-                  setState({ sync: { ...sync, selected: selectedIds } })
-                } }),
-                el('div', { class: 'skb-remote-main' },
-                  el('div', { class: 'skb-market-ref', text: remote.name + ' · ' + remote.type }),
-                  el('div', { class: 'skb-market-meta', text: remote.url }),
-                  el('div', { class: 'skb-market-meta', text: remote.hasCredential ? b('已配置凭据', 'Credentials saved') : b('使用本机 git/SSH 凭据', 'Using local git/SSH credentials') }),
-                  sync.testResults && sync.testResults[remote.id] ? el('div', { class: 'skb-test-result', text: sync.testResults[remote.id].message }) : null),
-                el('div', { class: 'skb-remote-actions' },
-                  el('button', { class: 'skb-btn', type: 'button', text: b('测试连接', 'Test connection'), onclick: function () {
-                    api('/sync/test', { remoteId: remote.id }).then(function (result) {
-                      setState({ sync: { ...S.sync, testResults: { ...(S.sync.testResults || {}), [remote.id]: result } } })
-                    }).catch(function (e) { setState({ sync: { ...S.sync, error: e.message } }) })
+          sync.screen === 'settings' ? el('div', null,
+            el('div', { class: 'skb-sync-settings-head' },
+              el('button', { class: 'skb-btn', type: 'button', text: b('← 返回同步', '← Back to sync'), onclick: function () {
+                setState({ sync: { ...S.sync, screen: 'list', form: null, editingId: null, error: null } })
+              } }),
+              el('h3', { class: 'skb-section-title', text: sync.editingId ? b('编辑远端', 'Edit remote') : b('添加远端', 'Add remote') })),
+            el('div', { class: 'skb-sync-form' },
+              el('input', { class: 'skb-input', value: form.name, placeholder: b('远端名称', 'Remote name'), oninput: function (e) { updateForm({ name: e.target.value }) } }),
+              el('select', { class: 'skb-select', value: form.type, onchange: function (e) { updateForm({ type: e.target.value }) } },
+                el('option', { value: 'github', text: 'GitHub' }),
+                el('option', { value: 'gitee', text: 'Gitee' }),
+                el('option', { value: 'gitlab', text: b('GitLab/公司内网', 'GitLab / self-hosted') }),
+                el('option', { value: 'custom', text: b('自定义 Git', 'Custom Git') }),
+                el('option', { value: 'file', text: b('本地 file://', 'Local file://') })),
+              el('input', { class: 'skb-input wide', value: form.url, placeholder: 'https://github.com/owner/repo.git / git@host:team/repo.git', oninput: function (e) { updateForm({ url: e.target.value }) } }),
+              el('input', { class: 'skb-input', value: form.username, placeholder: b('用户名（可选）', 'Username (optional)'), oninput: function (e) { updateForm({ username: e.target.value }) } }),
+              el('input', { class: 'skb-input', type: 'password', value: form.password, placeholder: b('密码/Token（仅本机保存）', 'Password/token (stored locally only)'), oninput: function (e) { updateForm({ password: e.target.value }) } }),
+              el('label', { class: 'wide' },
+                el('input', { type: 'checkbox', checked: !!form.insecureSkipTls, onchange: function (e) { updateForm({ insecureSkipTls: e.target.checked }) } }),
+                b(' 内网自签名证书时跳过 TLS 校验（谨慎）', ' Skip TLS verification for self-signed certificates (careful)')),
+              el('div', { class: 'skb-sync-settings-actions' },
+                el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: b('保存设置', 'Save settings'), disabled: !!sync.busy, onclick: saveRemote }),
+                el('button', { class: 'skb-btn', type: 'button', text: b('取消', 'Cancel'), onclick: function () {
+                  setState({ sync: { ...S.sync, screen: 'list', form: null, editingId: null, error: null } })
+                } })))) : el('div', null,
+            el('div', { class: 'skb-sync-toolbar' },
+              el('div', { class: 'skb-section-title', text: b('同步远端', 'Sync remotes') }),
+              el('button', { class: 'skb-btn', type: 'button', text: b('＋ 添加远端', '＋ Add remote'), onclick: function () { openSettings(null) } })),
+            el('div', { class: 'skb-remotes' },
+              sync.remotes.length === 0 ? el('div', { class: 'skb-empty', text: b('还没有远端。添加后即可推送或拉取技能清单。', 'No remotes yet. Add one to push or pull your skill manifest.') }) : null,
+              sync.remotes.map(function (remote) {
+                const selected = sync.selected.includes(remote.id)
+                return el('div', { class: 'skb-remote-row' },
+                  el('input', { type: 'checkbox', checked: selected, onchange: function (e) {
+                    const selectedIds = e.target.checked ? [...sync.selected, remote.id] : sync.selected.filter((id) => id !== remote.id)
+                    setState({ sync: { ...S.sync, selected: selectedIds } })
                   } }),
-                  el('button', { class: 'skb-btn', type: 'button', text: b('编辑', 'Edit'), onclick: function () {
-                    setState({ sync: { ...sync, editingId: remote.id, form: { ...remote, password: '' } } })
-                  } }),
-                  el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: b('删除', 'Delete'), onclick: function () {
-                    setState({ sync: { ...sync, remotes: sync.remotes.filter((r) => r.id !== remote.id), selected: sync.selected.filter((id) => id !== remote.id) } })
-                  } })))
-            })),
-          el('div', { class: 'skb-sync-form' },
-            el('input', { class: 'skb-input', value: form.name, placeholder: b('远端名称', 'Remote name'), oninput: function (e) { updateForm({ name: e.target.value }) } }),
-            el('select', { class: 'skb-select', value: form.type, onchange: function (e) { updateForm({ type: e.target.value }) } },
-              el('option', { value: 'github', text: 'GitHub' }),
-              el('option', { value: 'gitee', text: 'Gitee' }),
-              el('option', { value: 'gitlab', text: b('GitLab/公司内网', 'GitLab / self-hosted') }),
-              el('option', { value: 'custom', text: b('自定义 Git', 'Custom Git') }),
-              el('option', { value: 'file', text: b('本地 file://', 'Local file://') })),
-            el('input', { class: 'skb-input wide', value: form.url, placeholder: 'https://github.com/owner/repo.git / git@host:team/repo.git', oninput: function (e) { updateForm({ url: e.target.value }) } }),
-            el('input', { class: 'skb-input', value: form.username, placeholder: b('用户名（可选）', 'Username (optional)'), oninput: function (e) { updateForm({ username: e.target.value }) } }),
-            el('input', { class: 'skb-input', type: 'password', value: form.password, placeholder: b('密码/Token（仅本机保存）', 'Password/token (stored locally only)'), oninput: function (e) { updateForm({ password: e.target.value }) } }),
-            el('label', { class: 'wide' },
-              el('input', { type: 'checkbox', checked: !!form.insecureSkipTls, onchange: function (e) { updateForm({ insecureSkipTls: e.target.checked }) } }),
-              b(' 内网自签名证书时跳过 TLS 校验（谨慎）', ' Skip TLS verification for self-signed certificates (careful)')),
-            el('div', null,
-              el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: sync.editingId ? b('更新远端', 'Update remote') : b('添加远端', 'Add remote'), onclick: addOrUpdateRemote }),
-              el('button', { class: 'skb-btn', type: 'button', text: b('保存全部远端', 'Save all remotes'), disabled: !!sync.busy, onclick: saveRemotes }))),
+                  el('div', { class: 'skb-remote-main' },
+                    el('div', { class: 'skb-market-ref', text: remote.name + ' · ' + remote.type }),
+                    el('div', { class: 'skb-market-meta', text: remote.url }),
+                    el('div', { class: 'skb-market-meta', text: remote.hasCredential ? b('已配置凭据', 'Credentials saved') : b('使用本机 git/SSH 凭据', 'Using local git/SSH credentials') }),
+                    sync.testResults && sync.testResults[remote.id] ? el('div', { class: 'skb-test-result', text: sync.testResults[remote.id].message }) : null),
+                  el('div', { class: 'skb-remote-actions' },
+                    el('button', { class: 'skb-btn', type: 'button', text: b('测试连接', 'Test connection'), onclick: function () {
+                      api('/sync/test', { remoteId: remote.id }).then(function (result) {
+                        setState({ sync: { ...S.sync, testResults: { ...(S.sync.testResults || {}), [remote.id]: result } } })
+                      }).catch(function (e) { setState({ sync: { ...S.sync, error: e.message } }) })
+                    } }),
+                    el('button', { class: 'skb-btn', type: 'button', text: b('设置', 'Settings'), onclick: function () { openSettings(remote) } }),
+                    el('button', { class: 'skb-btn skb-btn--danger', type: 'button', text: b('删除', 'Delete'), onclick: function () {
+                      if (!window.confirm(b('删除这个远端配置？', 'Delete this remote configuration?'))) return
+                      const remotes = sync.remotes.filter((r) => r.id !== remote.id)
+                      S.sync.selected = sync.selected.filter((id) => id !== remote.id)
+                      persistRemotes(remotes, b('远端已删除', 'Remote deleted'))
+                    } })))
+              }))),
           sync.error ? el('div', { class: 'skb-notice skb-notice--error', text: sync.error }) : null,
           sync.notice ? el('div', { class: 'skb-notice skb-notice--' + sync.notice.kind, text: sync.notice.text }) : null,
-          el('div', { style: { display: 'flex', gap: '8px' } },
+          sync.screen !== 'settings' ? el('div', { style: { display: 'flex', gap: '8px' } },
             el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: b('推送所选', 'Push selected'), disabled: !!sync.busy || sync.selected.length === 0, onclick: function () {
               S.sync.busy = true; render()
               api('/sync/push', { remoteIds: sync.selected }).then(function (result) {
@@ -906,13 +919,13 @@ window.__ModuleLoader__.load({
               api('/sync/pull', { remoteIds: sync.selected }).then(function (result) {
                 setState({ sync: { ...S.sync, busy: false, pullResults: result.results || [], error: result.ok === false && !result.results ? result.reason : null } })
               }).catch(function (e) { setState({ sync: { ...S.sync, busy: false, error: e.message } }) })
-            } })),
-          sync.pushResults && sync.pushResults.length ? el('div', { class: 'skb-sync-results' },
+            } })) : null,
+          sync.screen !== 'settings' && sync.pushResults && sync.pushResults.length ? el('div', { class: 'skb-sync-results' },
             sync.pushResults.map(function (result) {
               const remote = sync.remotes.find((r) => r.id === result.remoteId)
               return el('div', { class: 'skb-notice skb-notice--' + (result.ok ? 'ok' : 'error'), text: (remote ? remote.name : result.remoteId) + ' · ' + (result.ok ? (result.changed ? b('已推送', 'Pushed') : b('无变化', 'No changes')) : result.error) })
             })) : null,
-          sync.pullResults && sync.pullResults.length ? el('div', { class: 'skb-sync-results' },
+          sync.screen !== 'settings' && sync.pullResults && sync.pullResults.length ? el('div', { class: 'skb-sync-results' },
             sync.pullResults.map(function (result) {
               const remote = sync.remotes.find((r) => r.id === result.remoteId)
               if (!result.ok) return el('div', { class: 'skb-notice skb-notice--error', text: (remote ? remote.name : result.remoteId) + ' · ' + result.error })
@@ -930,7 +943,7 @@ window.__ModuleLoader__.load({
                     } }))
                 }))
             })) : null)
-        return modalShell(t('sync.title'), body)
+        return modalShell(sync.screen === 'settings' ? b('同步设置', 'Sync settings') : t('sync.title'), body)
       }
       if (S.modal === 'roots') {
         var roots = S.rootsSnapshot || (S.view && S.view.roots) || []
@@ -1022,7 +1035,7 @@ window.__ModuleLoader__.load({
             setState({ modal: 'roots', rootsSnapshot: null })
             load().then(function (d) { if (d) setState({ rootsSnapshot: d.roots }) })
           } }),
-                      el('button', { class: 'skb-btn', type: 'button', text: t('action.sync'), onclick: function () { setState({ modal: 'sync', sync: { repo: '', result: null, manifest: null, busy: false, remotes: [], remotesLoaded: false, selected: [], testResults: {}, pushResults: [], pullResults: [], form: null, editingId: null, error: null, notice: null } }) } }),
+                      el('button', { class: 'skb-btn', type: 'button', text: t('action.sync'), onclick: function () { setState({ modal: 'sync', sync: { repo: '', result: null, manifest: null, busy: false, remotes: [], remotesLoaded: false, selected: [], testResults: {}, pushResults: [], pullResults: [], screen: 'list', form: null, editingId: null, error: null, notice: null } }) } }),
           el('div', { class: 'skb-relative' },
             el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('action.add') + ' ▾', onclick: function (e) {
               var menu = e.target.parentElement.querySelector('.skb-menu')

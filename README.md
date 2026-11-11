@@ -24,7 +24,8 @@ Agent 技能（SKILL.md）现在散落在多处：`~/.agents/skills/`、`~/.clau
 |---|---|
 | 目录发现 | 自动探测 agents.md 标准（`~/.agents/skills`、项目级）与 Claude/Codex/Cursor 等约定目录，支持自定义根目录；探测不到的显示"未找到"而非报错 |
 | 无损盘点 | 首次运行扫描全部目录建档，无法判定来源的一律标记 `foreign`，一条不丢、不改 |
-| 列表管理 | 名称/来源/作用域/归属 agent/加载状态/置顶；组合过滤；全局启停对所有会话立即生效，项目启停只影响所属项目；均不移动技能文件，无需重启 |
+| 列表管理 | 名称/来源/作用域/归属 agent/加载状态/置顶；组合过滤；全局启停对所有会话立即生效，项目启停只影响所属项目；均不移动技能文件，无需重启。加载状态按技能文件存在与启停状态判断，不随当前会话切换 |
+| 清单同步 | 默认展示远端清单与推送/拉取操作；新增或编辑远端进入独立设置页，支持 GitHub/Gitee/GitLab/内网 Git/本地仓库及连接测试 |
 | 详情抽屉 | SKILL.md 预览（懒加载）、frontmatter 解析、健康报告、可用备份与一键回滚 |
 | 市场安装 | `npx skills find` 搜索 skills.sh，显示安装量/来源；安装量 < 100 醒目提示"社区验证不足"；锁文件由官方 CLI 处理 |
 | 软链管理 | 添加/断开/转正（materialize）软链；目标必须含 SKILL.md，拒绝 `..`/根目录/不存在目标；Windows 无权限时降级 junction/拷贝并明确提示 |
@@ -64,8 +65,8 @@ dsh-skills-butler/
 │   ├── store.js             #   state.json 原子写 + watcher + 并发合并
 │   └── skills-cli.js        #   npx skills 封装（解析/降级/锁文件门禁）
 ├── dsh/                     # DSH 适配层
-│   ├── index.js             #   cordis 入口（inject sessions，首启盘点）
-│   ├── manager.js           #   core 编排 + host skills 注册表对接（已加载状态）
+│   ├── index.js             #   cordis 入口（inject agents，首启盘点）
+│   ├── manager.js           #   core 编排 + live Agent 单项技能启停
 │   └── routes.js            #   /dsh-skills/api/*（connection 信任门）
 └── client/client.js         # 设置页「技能」section（Codex 风格：筛选/搜索/列表/详情抽屉）
 ```
@@ -76,7 +77,7 @@ dsh-skills-butler/
 
 - `npx skills` 支持 `add/remove/list/find/update/init/sync`；**没有 `check` 命令**，更新检查由 git 来源比对 remote 实现；
 - 参考插件 [dsh-mcp-tools](https://github.com/hxlog/dsh-mcp-tools) 验证了 `webServer.register` 路由 + connection 信任门 + store 原子写模式，本插件沿用；
-- DSH Host API 清单：`webServer.register`、`connection.requestRejection`、`ctx.skills.registerProvider`（全局/项目启停与即时缓存失效）、`ctx.skills.list`、`sessionSkillCatalog`（项目加载状态）、`ctx.effect`/`ctx.inject`、`settings.section` slot。
+- DSH Host API 清单：`webServer.register`、`connection.requestRejection`、live Agent 的 `ctx.skills.register`（单项启停，注册/释放即时失效缓存）、`agents.list`、`agent/created`/`agent/disposed`、`ctx.effect`/`ctx.inject`、`settings.section` slot。加载状态直接来自文件盘点与启停状态，不依赖会话目录。
 
 ## 配置
 

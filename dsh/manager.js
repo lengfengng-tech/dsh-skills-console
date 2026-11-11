@@ -37,9 +37,6 @@ const DEFAULT_CONFIG = {
   cliTimeoutMs: 60000
 }
 
-const DISABLE_PROJECT_RANK = 150 // outranks project-agents (200)
-const DISABLE_GLOBAL_RANK = 250  // outranks user-agents (500), not project skills
-
 export class SkillsManager {
   constructor(ctx, config = {}) {
     this.ctx = ctx
@@ -49,10 +46,9 @@ export class SkillsManager {
     this.marketplace = new Marketplace(this.cli)
     this._roots = null
     this._rootsAt = 0
-    this._loadedCache = { at: 0, sessionId: null, value: { global: new Set(), project: new Set(), debug: {} } }
-    this._skillProviderControl = null
-    this._skillProviderDispose = null
-    this.installSkillProvider()
+    // Individual runtime registrations shadow only their own skill name in the
+    // Agent layer; unlike a provider, they never hide the preset filesystem.
+    this._agentTombstones = new Map()
   }
 
   /** (Re)scan the world: discover roots, census, reconcile, persist. */
@@ -160,83 +156,26 @@ export class SkillsManager {
   }
 
   /**
-   * Global loaded status comes from the root registry and is session-independent.
-   * Project status uses the active/latest session catalog for cwd + preset context.
+   * Availability is global/project file presence plus the user's toggle state.
+   * It deliberately does not depend on whichever session happens to be open.
+   * Agent-scoped registries control actual invocation; they are not used as a
+   * per-session substitute for these stable global/project states.
    */
-  currentAgentSessionId() {
-    try {
-      const agents = this.ctx.get('agents')
-      if (!agents) return undefined
-      if (typeof agents.currentInitiator === 'function') {
-        const current = agents.currentInitiator()
-        if (current && current.id) return current.id
-      }
-      if (typeof agents.roots === 'function') {
-        const roots = agents.roots()
-        if (roots && roots[0] && roots[0].id) return roots[0].id
-      }
-    } catch { /* no active agent */ }
-    return undefined
-  }
-
-  async latestStoredSessionId() {
-    try {
-      const persistence = this.ctx.sessionPersistence
-      if (!persistence || typeof persistence.list !== 'function') return undefined
-      const snapshots = await persistence.list()
-      const ids = snapshots
-        .map((snap) => snap && snap.header)
-        .filter((header) => header && header.id)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-      return ids.length ? ids[0].id : undefined
-    } catch {
-      return undefined
-    }
-  }
-
-  async loadedCatalogs(sessionId) {
-    const now = Date.now()
-    const requestedId = sessionId || this.currentAgentSessionId()
-    if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === requestedId) return this._loadedCache.value
+  loadedCatalogs() {
     const global = new Set()
     const project = new Set()
-    const effectiveId = requestedId || await this.latestStoredSessionId()
+    for (const record of this.records()) {
+      if (record.agent !== 'agents' || record.disabled || record.brokenLink) continue
+      if (record.scope === 'project') project.add(record.name)
+      else global.add(record.name)
+    }
     const debug = {
-      sessionId: sessionId || null, effectiveId: effectiveId || null,
-      globalCatalogPresent: false, catalogPresent: false,
-      globalCount: 0, count: 0, error: null
+      source: 'filesystem-and-toggle-state', sessionId: null, effectiveId: null,
+      globalCatalogPresent: true, catalogPresent: true,
+      globalCount: global.size, count: project.size, error: null
     }
-    const registry = this.ctx.get('skills')
-    debug.globalCatalogPresent = !!registry
-    if (registry && typeof registry.list === 'function') {
-      try {
-        const list = await registry.list({})
-        debug.globalCount = list.length
-        for (const entry of list) {
-          if (entry && typeof entry.name === 'string' && entry.invocation?.userInvocable !== false) global.add(entry.name)
-        }
-      } catch (error) {
-        debug.error = String((error && error.message) || error).slice(0, 160)
-      }
-    }
-    const catalog = this.ctx.get('sessionSkillCatalog')
-    debug.catalogPresent = !!catalog
-    if (catalog && effectiveId) {
-      try {
-        const value = await catalog.list({ sessionId: effectiveId })
-        const list = value && Array.isArray(value.skills) ? value.skills : []
-        debug.count = list.length
-        for (const entry of list) {
-          if (entry && typeof entry.name === 'string') project.add(entry.name)
-        }
-      } catch (error) {
-        debug.error = String((error && error.message) || error).slice(0, 160)
-      }
-    }
-    const value = { global, project, debug }
     this._loadedDebug = debug
-    this._loadedCache = { at: now, sessionId: requestedId, value }
-    return value
+    return { global, project, debug }
   }
 
   /** Group DSH-local records by name; newest mtime is the preferred source. */
@@ -290,9 +229,9 @@ export class SkillsManager {
   }
 
   /** Full panel payload: DSH-local skills + importable external skills. */
-  async view(sessionId) {
+  async view() {
     const records = this.records()
-    const catalogs = await this.loadedCatalogs(sessionId)
+    const catalogs = this.loadedCatalogs()
     const dshNames = new Set(records.filter((r) => r.agent === 'agents').map((r) => r.name))
     const externalByName = new Map()
     for (const record of records) {
@@ -406,47 +345,69 @@ export class SkillsManager {
     return this.finishMutation({ name, disabled: false, scope: isProject ? 'dsh-project' : 'dsh-global' })
   }
 
-  /** Invalidate the root skill registry; all live and future agents see it immediately. */
+  /** Reconcile only same-named runtime entries in each live Agent layer. */
   syncTombstones() {
-    if (this._skillProviderControl) this._skillProviderControl.invalidate()
-    this._loadedCache.at = 0
+    for (const entry of this._agentTombstones.values()) this.syncAgentTombstones(entry)
   }
 
-  installSkillProvider() {
-    const registry = this.ctx.get('skills')
-    if (!registry || typeof registry.registerProvider !== 'function') return
-    const candidate = (name, rank, projectRoot = null) => {
-      const definition = {
+  syncAgentTombstones(entry) {
+    const state = this.store.state()
+    const cwd = agentCwd(entry.agent)
+    const projectNames = new Set()
+    if (cwd) {
+      for (const record of this.records()) {
+        if (record.agent !== 'agents' || record.scope !== 'project' || record.brokenLink) continue
+        const root = this.projectRootFor(record)
+        if (root && withinRoot(cwd, root)) projectNames.add(record.name)
+      }
+    }
+    const desired = new Set()
+    for (const name of state.dshDisabled || []) {
+      // A same-named project skill remains the explicit project override.
+      if (!projectNames.has(name)) desired.add(name)
+    }
+    for (const item of state.dshProjectDisabled || []) {
+      if (cwd && withinRoot(cwd, item.projectRoot)) desired.add(item.name)
+    }
+    for (const [name, dispose] of entry.disposers) {
+      if (desired.has(name)) continue
+      try { dispose() } catch { /* already disposed */ }
+      entry.disposers.delete(name)
+    }
+    for (const name of desired) {
+      if (entry.disposers.has(name)) continue
+      const dispose = entry.registry.register({
         name,
         description: 'Disabled in DeepSeek Harness by Skills Butler',
         content: 'This skill is disabled in DeepSeek Harness by Skills Butler.',
         source: 'runtime',
         invocation: { modelInvocable: false, userInvocable: false }
-      }
-      return { name, description: definition.description, rank, source: 'runtime', provider: 'dsh-skills-butler-disabled', invocation: definition.invocation, projectRoot, locator: definition }
+      })
+      entry.disposers.set(name, dispose)
     }
-    const manager = this
-    this._skillProviderDispose = registry.registerProvider((control) => {
-      this._skillProviderControl = control
-      return {
-        name: 'dsh-skills-butler-disabled',
-        async list(options = {}) {
-          const state = manager.store.state()
-          const candidates = (state.dshDisabled || []).map((name) => candidate(name, DISABLE_GLOBAL_RANK))
-          const cwd = options.cwd ? path.resolve(options.cwd) : null
-          for (const entry of state.dshProjectDisabled || []) {
-            if (!cwd) continue
-            const root = path.resolve(entry.projectRoot)
-            const relative = path.relative(root, cwd)
-            if (relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) {
-              candidates.push(candidate(entry.name, DISABLE_PROJECT_RANK, root))
-            }
-          }
-          return candidates
-        },
-        async get(item) { return item.locator }
-      }
-    })
+  }
+
+  onAgentCreated(agent) {
+    if (!agent || !agent.id || this._agentTombstones.has(agent.id)) return
+    const registry = agent.ctx && typeof agent.ctx.get === 'function' ? agent.ctx.get('skills') : null
+    if (!registry || typeof registry.register !== 'function') return
+    const entry = { agent, registry, disposers: new Map() }
+    this._agentTombstones.set(agent.id, entry)
+    try { this.syncAgentTombstones(entry) } catch (error) {
+      this.store.log({ op: 'tombstone-error', message: String(error && error.message || error) })
+    }
+  }
+
+  installExistingAgentTombstones() {
+    try {
+      const agents = this.ctx.get('agents')
+      for (const agent of agents && typeof agents.list === 'function' ? agents.list() : []) this.onAgentCreated(agent)
+    } catch { /* no live agents */ }
+  }
+
+  onAgentDisposed(agent) {
+    const id = agent && agent.id
+    if (id) this._agentTombstones.delete(id)
   }
 
   async opRemove(name, dir, { confirmed = false, backup: takeBackup = true } = {}) {
@@ -617,7 +578,6 @@ export class SkillsManager {
 
   finishMutation(extra) {
     this.refresh()
-    this._loadedCache.at = 0
     return { ok: true, ...extra }
   }
 
@@ -761,11 +721,25 @@ export class SkillsManager {
   }
 
   dispose() {
-    if (this._skillProviderDispose) { try { this._skillProviderDispose() } catch { /* noop */ } }
-    this._skillProviderDispose = null
-    this._skillProviderControl = null
+    for (const entry of this._agentTombstones.values()) {
+      for (const dispose of entry.disposers.values()) {
+        try { dispose() } catch { /* noop */ }
+      }
+    }
+    this._agentTombstones.clear()
     this.store.dispose()
   }
+}
+
+function agentCwd(agent) {
+  const cwd = agent && (agent.cwd || (agent.session && agent.session.header && agent.session.header.cwd))
+  return cwd ? path.resolve(cwd) : null
+}
+
+function withinRoot(cwd, projectRoot) {
+  if (!cwd || !projectRoot) return false
+  const relative = path.relative(path.resolve(projectRoot), path.resolve(cwd))
+  return relative === '' || (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative))
 }
 
 function previewFixSafe(record, issue) {
