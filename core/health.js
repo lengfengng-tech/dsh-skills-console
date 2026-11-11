@@ -8,10 +8,11 @@ import { SKILL_NAME_PATTERN } from './store.js'
 /**
  * Compute health for one reconciled record.
  * @param {object} record reconciled skill record (with brokenLink/shadowed/conflict flags)
- * @returns {{ loadable: boolean, issues: string[], level: 'ok'|'warn'|'error' }}
+ * @returns {{ loadable: boolean, issues: string[], infos: string[], level: 'ok'|'warn'|'error' }}
  */
 export function checkSkill(record) {
   const issues = []
+  const infos = []
   let level = 'ok'
 
   function warn(code) { issues.push(code); if (level === 'ok') level = 'warn' }
@@ -34,13 +35,13 @@ export function checkSkill(record) {
     if (isEmptyDir(record.dir)) warn('empty-dir')
   }
 
-  if (record.shadowed) warn('shadowed-by-project')
+  if (record.shadowed) infos.push('shadowed-by-project')
   if (record.conflict) {
     const paths = Array.isArray(record.sources) ? record.sources.map((s) => s.dir).filter(Boolean) : []
-    warn(paths.length > 1 ? 'name-conflict: ' + paths.join(' | ') : 'name-conflict')
+    infos.push(paths.length > 1 ? 'name-conflict: ' + paths.join(' | ') : 'name-conflict')
   }
 
-  return { loadable: level !== 'error', issues, level }
+  return { loadable: level !== 'error', issues, infos, level }
 }
 
 function isEmptyDir(dir) {

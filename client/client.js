@@ -281,6 +281,18 @@ window.__ModuleLoader__.load({
       node.appendChild(typeof child === 'string' || typeof child === 'number' ? document.createTextNode(String(child)) : child)
     }
 
+    var toastSequence = 0
+    function showToast(text, kind) {
+      var id = ++toastSequence
+      var toast = el('div', { class: 'skb-toast skb-toast--' + (kind || 'ok'), role: 'status', 'aria-live': 'polite', text: text, 'data-toast-id': id })
+      document.body.appendChild(toast)
+      requestAnimationFrame(function () { toast.classList.add('skb-toast--visible') })
+      setTimeout(function () {
+        toast.classList.remove('skb-toast--visible')
+        setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast) }, 180)
+      }, kind === 'error' ? 5000 : 3000)
+    }
+
     // ------------------------------------------------------------------
     // Styles (head-injected once)
     // ------------------------------------------------------------------
@@ -297,6 +309,8 @@ window.__ModuleLoader__.load({
 '.skb-btn--danger{color:var(--dsw-alias-state-error-primary,#e5534b)}' +
 '.skb-notice{border-radius:8px;padding:8px 12px;border:1px solid var(--dsw-alias-border-l1,#333);background:var(--dsw-alias-bg-layer-1,#1c1c1c);color:var(--dsw-alias-label-secondary,#999)}' +
 '.skb-notice--error{color:var(--dsw-alias-state-error-primary,#e5534b)}.skb-notice--ok{color:var(--dsw-alias-state-success-primary,#3fb950)}.skb-notice--warn{color:var(--dsw-alias-state-warn-primary,#d29922)}' +
+'.skb-toast{position:fixed;top:18px;right:18px;z-index:1100;max-width:min(480px,calc(100vw - 36px));padding:10px 14px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1,#333);background:var(--dsw-alias-bg-layer-2,#242424);color:var(--dsw-alias-label-primary,#ddd);box-shadow:0 10px 32px rgba(0,0,0,.35);opacity:0;transform:translateY(-6px);transition:opacity .18s,transform .18s;pointer-events:none;font:13px/1.5 -apple-system,"PingFang SC","Segoe UI",sans-serif}' +
+'.skb-toast--visible{opacity:1;transform:translateY(0)}.skb-toast--ok{border-color:var(--dsw-alias-state-success-primary,#3fb950)}.skb-toast--error{border-color:var(--dsw-alias-state-error-primary,#e5534b);color:var(--dsw-alias-state-error-primary,#e5534b)}' +
 '.skb-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}' +
 '.skb-tabs{display:flex;gap:4px;flex-wrap:wrap}' +
 '.skb-tab{font:inherit;cursor:pointer;border:none;background:transparent;color:var(--dsw-alias-label-secondary,#999);padding:5px 12px;border-radius:8px}' +
@@ -459,10 +473,10 @@ window.__ModuleLoader__.load({
       api('/refresh', {}).then(function (result) {
         const count = typeof result.dsh === 'number' ? result.dsh : (result.skills ? result.skills.length : 0)
         return load().then(function () {
-          setState({ notice: { kind: 'ok', text: b('刷新成功：扫描 ' + (result.scanned || count) + ' 条记录，DSH 可管理 ' + count + ' 个技能', 'Refreshed: ' + (result.scanned || count) + ' records, ' + count + ' DSH skills') } })
+          showToast(b('刷新成功：扫描 ' + (result.scanned || count) + ' 条记录，DSH 可管理 ' + count + ' 个技能', 'Refreshed: ' + (result.scanned || count) + ' records, ' + count + ' DSH skills'), 'ok')
         })
       }).catch(function (e) {
-        setState({ notice: { kind: 'error', text: b('刷新失败：' + e.message, 'Refresh failed: ' + e.message) } })
+        showToast(b('刷新失败：' + e.message, 'Refresh failed: ' + e.message), 'error')
       }).finally(function () { setState({ busy: false }) })
     }
 

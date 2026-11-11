@@ -267,7 +267,7 @@ export class SkillsManager {
         ...preferred,
         description: probe.description || '',
         mtime: probe.mtime || 0,
-        loaded: loaded.has(preferred.name),
+        loaded: !preferred.disabled && loaded.has(preferred.name),
         issues: checkSkill(preferred).issues
       }
     })

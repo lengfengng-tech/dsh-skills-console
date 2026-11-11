@@ -116,7 +116,8 @@ function makeSkill(root, name, { withSkillMd = true, fm = {}, body = '# x\n' } =
     conflict: true,
     sources: [{ dir: '/tmp/one' }, { dir: '/tmp/two' }]
   })
-  assert.ok(withPaths.issues.some((i) => i.includes('/tmp/one') && i.includes('/tmp/two')), 'conflict lists every path')
+  assert.ok(withPaths.infos.some((i) => i.includes('/tmp/one') && i.includes('/tmp/two')), 'conflict lists every path as info')
+  assert.ok(!withPaths.issues.some((i) => i.startsWith('name-conflict')), 'same-name sources are not warnings')
 }
 
 // --- store.js: atomic write, merge, watcher ---
