@@ -605,7 +605,6 @@ window.__ModuleLoader__.load({
           } }))
         return modalShell(t('market.title'), el('div', null,
           searchRow,
-          S.view && S.view.lockfiles && S.view.lockfiles.length > 0 ? el('div', { class: 'skb-notice', text: t('market.lockfile') + ' ' + S.view.lockfiles[0].path }) : null,
           S.market.searched && S.market.rows.length === 0 ? el('div', { class: 'skb-empty', text: t('market.empty') }) : null,
           rows))
       }
