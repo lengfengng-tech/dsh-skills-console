@@ -333,7 +333,7 @@ window.__ModuleLoader__.load({
 '.skb-pre{margin:0;padding:12px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1,#2a2a2a);background:var(--dsw-alias-bg-base,#111);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow-y:auto}' +
 '.skb-section-title{margin:0 0 6px;font-size:13px;font-weight:600}' +
 '.skb-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(640px,94vw);max-height:84vh;overflow-y:auto;background:var(--dsw-alias-bg-layer-1,#1c1c1c);border:1px solid var(--dsw-alias-border-l1,#333);border-radius:14px;z-index:1004;padding:18px 20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 18px 48px rgba(0,0,0,.4);color:var(--dsw-alias-label-primary,#ddd)}' +
-'.skb-modal h3{margin:0;font-size:15px}' +
+'.skb-modal h3{margin:0;font-size:15px}.skb-modal-close{position:absolute;top:12px;right:12px;width:28px;height:28px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#999);font-size:20px;line-height:1;cursor:pointer}.skb-modal-close:hover{background:var(--dsw-alias-bg-layer-2,#2a2a2a);color:var(--dsw-alias-label-primary,#fff)}' +
 '.skb-menu{position:absolute;top:calc(100% + 6px);right:0;background:var(--dsw-alias-bg-layer-2,#242424);border:1px solid var(--dsw-alias-border-l1,#333);border-radius:10px;padding:6px;z-index:30;display:flex;flex-direction:column;min-width:180px;box-shadow:0 10px 30px rgba(0,0,0,.35)}' +
 '.skb-menu button{font:inherit;text-align:left;background:transparent;border:none;color:var(--dsw-alias-label-primary,#ddd);padding:8px 10px;border-radius:6px;cursor:pointer}' +
 '.skb-menu button:hover{background:var(--dsw-alias-bg-layer-1,#1c1c1c)}' +
@@ -447,6 +447,19 @@ window.__ModuleLoader__.load({
         setState({ error: e.message })
         return null
       })
+    }
+
+    function refreshAll() {
+      if (S.busy) return
+      setState({ busy: true, notice: null })
+      api('/refresh').then(function (result) {
+        const count = result.skills ? result.skills.length : 0
+        return load().then(function () {
+          setState({ notice: { kind: 'ok', text: '刷新成功，共 ' + count + ' 个技能' } })
+        })
+      }).catch(function (e) {
+        setState({ notice: { kind: 'error', text: '刷新失败：' + e.message } })
+      }).finally(function () { setState({ busy: false }) })
     }
 
     function filtered() {
@@ -612,6 +625,7 @@ window.__ModuleLoader__.load({
 
     function modalShell(title, children, onClose) {
       return overlay(el('div', { class: 'skb-modal', role: 'dialog' },
+        el('button', { class: 'skb-modal-close', type: 'button', 'aria-label': 'close', text: '×', onclick: onClose || function () { setState({ modal: null }) } }),
         el('h3', { text: title }),
         children), onClose || function () { setState({ modal: null }) })
     }
@@ -985,7 +999,7 @@ window.__ModuleLoader__.load({
           el('h1', { class: 'skb-title', text: t('panel.title') }),
           el('p', { class: 'skb-subtitle', text: t('panel.subtitle') })),
         el('div', { class: 'skb-actions' },
-          el('button', { class: 'skb-btn', type: 'button', text: t('action.refresh'), onclick: function () { load() } }),
+          el('button', { class: 'skb-btn', type: 'button', text: S.busy ? '刷新中…' : t('action.refresh'), disabled: !!S.busy, onclick: refreshAll }),
           el('button', { class: 'skb-btn', type: 'button', text: t('action.roots'), onclick: function () {
             setState({ modal: 'roots', rootsSnapshot: null })
             load().then(function (d) { if (d) setState({ rootsSnapshot: d.roots }) })
