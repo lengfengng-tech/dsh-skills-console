@@ -30,12 +30,12 @@ const registrations = []
 const agent = {
   id: 'agent-1',
   ctx: {
-    skills: {
+    get: (key) => key === 'skills' ? {
       register(skill) {
         registrations.push(skill)
         return () => { skill.disposed = true }
       }
-    }
+    } : undefined
   }
 }
 const ctx = {
@@ -89,16 +89,20 @@ assert.ok(logs.logs.some((l) => l.op === 'remove'))
 // from a root-context/cwd enumeration (which cannot see preset skill layers).
 {
   const catalogCtx = {
-    get: (key) => key === 'sessionSkillCatalog' ? {
-      list: async ({ sessionId }) => ({ skills: sessionId === 's-current' ? [{ name: 'alpha' }, { name: 'gamma' }] : [] })
-    } : undefined,
+    get: (key) => {
+      if (key === 'sessionSkillCatalog') return {
+        list: async ({ sessionId }) => ({ skills: sessionId === 's-current' ? [{ name: 'alpha' }, { name: 'gamma' }] : [] })
+      }
+      if (key === 'agents') return { currentInitiator: () => ({ id: 's-current' }) }
+      return undefined
+    },
     sessions: { list: () => [] }
   }
   const probe = new SkillsManager(catalogCtx, { home })
   assert.equal((await probe.loadedNames('s-current')).has('alpha'), true)
   assert.equal((await probe.loadedNames('s-current')).has('gamma'), true)
-  probe._loadedCache.at = 0 // defeat cache for the no-session case
-  assert.equal((await probe.loadedNames(undefined)).size, 0)
+  probe._loadedCache.at = 0 // defeat cache for the active-agent fallback case
+  assert.equal((await probe.loadedNames(undefined)).has('alpha'), true, 'active agent supplies the session')
   probe.dispose()
 }
 

@@ -825,8 +825,12 @@ window.__ModuleLoader__.load({
       var modals = modalsEl()
       if (modals) { modals.setAttribute('data-skb-overlay', '1'); document.body.appendChild(modals) }
 
+      var oldList = rootEl.querySelector('.skb-list')
+      var oldScrollTop = oldList ? oldList.scrollTop : 0
       rootEl.textContent = ''
       rootEl.appendChild(frag)
+      var newList = rootEl.querySelector('.skb-list')
+      if (newList) newList.scrollTop = oldScrollTop
       diag('rendered', 'skills=' + (S.view ? S.view.skills.length : '?') + ' tab=' + S.tab)
     }
 

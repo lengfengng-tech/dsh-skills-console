@@ -133,16 +133,33 @@ export class SkillsManager {
    * loaded view we claim: per-cwd probes cannot see preset skill layers, and
    * enumerating every stored session was the wrong level of abstraction.
    */
+  currentAgentSessionId() {
+    try {
+      const agents = this.ctx.get('agents')
+      if (!agents) return undefined
+      if (typeof agents.currentInitiator === 'function') {
+        const current = agents.currentInitiator()
+        if (current && current.id) return current.id
+      }
+      if (typeof agents.roots === 'function') {
+        const roots = agents.roots()
+        if (roots && roots[0] && roots[0].id) return roots[0].id
+      }
+    } catch { /* no active agent */ }
+    return undefined
+  }
+
   async loadedNames(sessionId) {
     const now = Date.now()
-    if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === sessionId) return this._loadedCache.names
+    if (now - this._loadedCache.at < 2000 && this._loadedCache.sessionId === (sessionId || this.currentAgentSessionId())) return this._loadedCache.names
     const names = new Set()
-    const debug = { sessionId: sessionId || null, catalogPresent: false, count: 0, error: null }
+    const effectiveId = sessionId || this.currentAgentSessionId()
+    const debug = { sessionId: sessionId || null, effectiveId: effectiveId || null, catalogPresent: false, count: 0, error: null }
     const catalog = this.ctx.get('sessionSkillCatalog')
     debug.catalogPresent = !!catalog
-    if (catalog && sessionId) {
+    if (catalog && effectiveId) {
       try {
-        const value = await catalog.list({ sessionId })
+        const value = await catalog.list({ sessionId: effectiveId })
         const list = value && Array.isArray(value.skills) ? value.skills : []
         debug.count = list.length
         for (const entry of list) {
@@ -153,7 +170,7 @@ export class SkillsManager {
       }
     }
     this._loadedDebug = debug
-    this._loadedCache = { at: now, sessionId, names }
+    this._loadedCache = { at: now, sessionId: effectiveId, names }
     return names
   }
 
@@ -316,12 +333,14 @@ export class SkillsManager {
   }
 
   installAgentTombstones(agent, disabled) {
-    if (!agent || !agent.ctx || !agent.ctx.skills || typeof agent.ctx.skills.register !== 'function') return
+    if (!agent || !agent.ctx || typeof agent.ctx.get !== 'function') return
+    const skills = agent.ctx.get('skills')
+    if (!skills || typeof skills.register !== 'function') return
     for (const name of disabled) {
       const key = String(agent.id || 'agent') + '|' + name
       if (this._tombstones.has(key)) continue
       try {
-        const dispose = agent.ctx.skills.register({
+        const dispose = skills.register({
           name,
           description: 'Disabled in DeepSeek Harness by Skills Butler',
           content: 'This skill is disabled in DeepSeek Harness by Skills Butler.',
