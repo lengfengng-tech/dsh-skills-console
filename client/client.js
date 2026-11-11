@@ -107,7 +107,7 @@ window.__ModuleLoader__.load({
         'market.lockfile': '检测到 skills-lock.json：安装会通过 skills CLI 按锁定规则处理，不会绕过或手工修改锁文件。',
         'local.title': '链接本地技能目录', 'local.target': '目标目录（需包含 SKILL.md）',
         'local.name': '技能名（留空取目录名）', 'local.submit': '创建软链',
-        'local.copyFallback': 'Windows 无软链权限时降级为拷贝，并在结果中提示。',
+        'local.copyFallback': 'Windows 无软链权限时降级为拷贝，并在结果中提示。', 'action.pickDirectory': '选择文件夹',
         'roots.title': '技能目录', 'roots.empty': '未探测到目录', 'roots.missing': '未找到',
         'roots.readonly': '只读', 'roots.custom': '自定义',
         'logs.title': '操作日志', 'logs.empty': '暂无操作记录',
@@ -167,7 +167,7 @@ window.__ModuleLoader__.load({
         'market.lockfile': 'skills-lock.json detected: installs run through the official CLI, which honors and updates the lockfile; it is never edited or bypassed here.',
         'local.title': 'Link a local skill directory', 'local.target': 'Target directory (must contain SKILL.md)',
         'local.name': 'Skill name (defaults to directory name)', 'local.submit': 'Create link',
-        'local.copyFallback': 'On Windows without link privilege this degrades to a copy, noted in the result.',
+        'local.copyFallback': 'On Windows without link privilege this degrades to a copy, noted in the result.', 'action.pickDirectory': 'Choose folder',
         'roots.title': 'Skill roots', 'roots.empty': 'No directories discovered', 'roots.missing': 'not found',
         'roots.readonly': 'read-only', 'roots.custom': 'custom',
         'logs.title': 'Operation log', 'logs.empty': 'No operations yet',
@@ -611,7 +611,17 @@ window.__ModuleLoader__.load({
       if (S.modal === 'local') {
         return modalShell(t('local.title'), el('div', null,
           el('label', { class: 'skb-field', text: t('local.target') },
-            el('input', { class: 'skb-input', value: S.localForm.target, oninput: function (e) { S.localForm.target = e.target.value } })),
+            el('div', { style: { display: 'flex', gap: '8px', marginTop: '4px' } },
+              el('input', { class: 'skb-input', style: { flex: '1' }, value: S.localForm.target, oninput: function (e) { S.localForm.target = e.target.value } }),
+              el('button', { class: 'skb-btn', type: 'button', text: t('action.pickDirectory'), onclick: async function () {
+                try {
+                  const workspace = ctx.get('uiWorkspace')
+                  if (workspace && typeof workspace.pickDirectory === 'function') {
+                    const dir = await workspace.pickDirectory()
+                    if (dir) { S.localForm.target = dir; render() }
+                  }
+                } catch (e) { setState({ notice: { kind: 'error', text: e.message || String(e) } }) }
+              } }))),
           el('label', { class: 'skb-field', text: t('local.name') },
             el('input', { class: 'skb-input', value: S.localForm.name, oninput: function (e) { S.localForm.name = e.target.value } })),
           el('div', { class: 'skb-notice', text: t('local.copyFallback') }),
@@ -738,8 +748,19 @@ window.__ModuleLoader__.load({
         el('button', { type: 'button', text: t('add.market'), onclick: function () { setState({ modal: 'market', market: { query: '', rows: [], searched: false, installing: null } }) } }),
         el('button', { type: 'button', text: t('add.local'), onclick: function () { setState({ modal: 'local', localForm: { target: '', name: '' } }) } }),
         el('button', { type: 'button', text: t('add.external'), onclick: function () { setState({ modal: 'external' }) } }),
-        el('button', { type: 'button', text: t('add.root'), onclick: function () {
-          var dir = window.prompt(t('add.root') + ' — path')
+        el('button', { type: 'button', text: t('add.root'), onclick: async function () {
+          try {
+            const workspace = ctx.get('uiWorkspace')
+            if (workspace && typeof workspace.pickDirectory === 'function') {
+              const dir = await workspace.pickDirectory()
+              if (dir) await mutate('/roots/add', { dir: dir })
+              return
+            }
+          } catch (e) {
+            setState({ notice: { kind: 'error', text: e.message || String(e) } })
+            return
+          }
+          const dir = window.prompt(t('add.root') + ' — path')
           if (dir) mutate('/roots/add', { dir: dir })
         } }))
     }
@@ -961,7 +982,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    exports.inject = ['slots', 'locale', 'sessions']
+    exports.inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
     exports.apply = apply
     return module.exports
   }
