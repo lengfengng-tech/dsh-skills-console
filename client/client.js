@@ -216,6 +216,34 @@ window.__ModuleLoader__.load({
         })
       })
     }
+    var pickerContext = null
+    async function pickDirectory() {
+      const ctx = pickerContext
+      diag('pick-dir-start')
+      try {
+        const workspace = ctx && (ctx.uiWorkspace || (typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : null))
+        if (workspace && typeof workspace.pickDirectory === 'function') {
+          const dir = await workspace.pickDirectory()
+          diag('pick-dir-done', dir || 'cancelled')
+          return dir || null
+        }
+        const remote = ctx && ctx.remote
+        if (remote && remote.directoryPicker && typeof remote.directoryPicker.pick === 'function') {
+          const result = await remote.directoryPicker.pick()
+          if (result && result.ok) {
+            diag('pick-dir-done', result.value || 'cancelled')
+            return result.value || null
+          }
+          if (result && result.error) throw result.error
+        }
+      } catch (e) {
+        diag('pick-dir-error', (e && e.message) || e)
+        throw e
+      }
+      diag('pick-dir-unavailable')
+      return null
+    }
+
     function formatTime(ts) {
       if (!ts) return null
       var d = new Date(ts)
@@ -615,11 +643,8 @@ window.__ModuleLoader__.load({
               el('input', { class: 'skb-input', style: { flex: '1' }, value: S.localForm.target, oninput: function (e) { S.localForm.target = e.target.value } }),
               el('button', { class: 'skb-btn', type: 'button', text: t('action.pickDirectory'), onclick: async function () {
                 try {
-                  const workspace = ctx.get('uiWorkspace')
-                  if (workspace && typeof workspace.pickDirectory === 'function') {
-                    const dir = await workspace.pickDirectory()
-                    if (dir) { S.localForm.target = dir; render() }
-                  }
+                  const dir = await pickDirectory()
+                  if (dir) { S.localForm.target = dir; render() }
                 } catch (e) { setState({ notice: { kind: 'error', text: e.message || String(e) } }) }
               } }))),
           el('label', { class: 'skb-field', text: t('local.name') },
@@ -750,18 +775,12 @@ window.__ModuleLoader__.load({
         el('button', { type: 'button', text: t('add.external'), onclick: function () { setState({ modal: 'external' }) } }),
         el('button', { type: 'button', text: t('add.root'), onclick: async function () {
           try {
-            const workspace = ctx.get('uiWorkspace')
-            if (workspace && typeof workspace.pickDirectory === 'function') {
-              const dir = await workspace.pickDirectory()
-              if (dir) await mutate('/roots/add', { dir: dir })
-              return
-            }
+            const dir = await pickDirectory()
+            if (dir) await mutate('/roots/add', { dir: dir })
+            else setState({ notice: { kind: 'warn', text: '未选择目录或当前环境不支持目录选择器' } })
           } catch (e) {
             setState({ notice: { kind: 'error', text: e.message || String(e) } })
-            return
           }
-          const dir = window.prompt(t('add.root') + ' — path')
-          if (dir) mutate('/roots/add', { dir: dir })
         } }))
     }
 
@@ -930,6 +949,7 @@ window.__ModuleLoader__.load({
     // apply
     // ------------------------------------------------------------------
     function apply(ctx) {
+      pickerContext = ctx
       injectStyles()
       if (ctx.effect && typeof ctx.effect === 'function') {
         ctx.effect(function () {
@@ -982,7 +1002,7 @@ window.__ModuleLoader__.load({
       }
     }
 
-    exports.inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
+    exports.inject = ['slots', 'locale', 'sessions', 'uiWorkspace', 'remote']
     exports.apply = apply
     return module.exports
   }
