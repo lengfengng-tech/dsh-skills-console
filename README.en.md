@@ -20,8 +20,7 @@ This plugin adds the human-facing layer: visible, manageable, recoverable.
 
 ## Features
 
-- **Adaptive root discovery** — agents.md standard + Claude/Codex/Cursor conventions + custom roots; missing dirs show "not found" instead of erroring.
-- **Lossless census** — first run archives every discovered skill; unknown origins are marked `foreign`; nothing dropped or rewritten.
+- **Lossless census** — discovers the agents.md standard plus Claude/Codex/Cursor conventions, then archives every skill on first run; unknown origins are marked `foreign`; nothing dropped or rewritten.
 - **List management** — name/origin/scope/agent/loaded/pinned; combined filters. Global toggles apply to every session immediately; project toggles affect only their owning project. Neither moves skill files nor requires a restart. Loaded status reflects the skill file and toggle state, not the selected session.
 - **Manifest sync** — a clean remote list with a separate settings view. Push merges incrementally by name, keeps the remote source for duplicates, and only adds missing entries. Pull installs only locally missing skills and explicitly skips existing ones. Invalid remote manifests are never overwritten.
 - **Detail drawer** — lazy SKILL.md preview, frontmatter parse, health report, backups with one-click rollback.
@@ -47,6 +46,13 @@ dsh plugin --profile desktop add ./dsh-skills-butler
 
 Then open **Settings → Skills**.
 
+## Prerequisites
+
+- DSH (DeepSeek Harness) desktop or web is installed;
+- Node.js ≥ 22.13 with `npm` / `npx` on PATH;
+- `npx skills` powers market search/install/update, and git-backed skills need `git`;
+- without Node/npm the local census, toggles, symlinks, and health checks still work; market installs degrade with an explicit notice.
+
 ## Architecture
 
 ```
@@ -69,12 +75,6 @@ dsh-skills-butler/
 
 Data flow: panel → same-origin `/dsh-skills/api/*` (DSH-authenticated) → SkillsManager → core (filesystem) → `~/.dsh/dsh-skills/state.json`.
 
-Research conclusions (verified 2026-11-05 against DSH 0.2.1-rc.5):
-
-- `npx skills` supports `add/remove/list/find/update/init/sync`; **there is no `check` command** — update checks compare git remotes instead;
-- the reference plugin [dsh-mcp-tools](https://github.com/hxlog/dsh-mcp-tools) validated the `webServer.register` route + connection trust gate + atomic store pattern reused here;
-- DSH host APIs used: `webServer.register`, `connection.requestRejection`, per-Agent `ctx.skills.register` (individual toggles with immediate cache invalidation on register/dispose), `agents.list`, `agent/created`/`agent/disposed`, `ctx.effect`/`ctx.inject`, `settings.section` slot. Actual toggle changes also emit `agent-preset/selected` with the current preset as a compatibility signal: the built-in composer clears its skill-catalog cache without a session event or preset switch. Loaded status comes from the filesystem inventory and toggle state rather than a session catalog.
-
 ## Config
 
 | Field | Default | Meaning |
@@ -92,11 +92,9 @@ npm test                      # core tests (no DSH required)
 node scripts/host-smoke.mjs   # adapter smoke with sandboxed DSH_HOME
 ```
 
-Milestones: M1 core+census → M2 panel → M3 operations → M4 health/backup/CLI → M5 polish.
-
 ## Compatibility
 
-DSH 0.2.1-rc.5+ (Node ≥ 22.13). Plain JavaScript, no build step.
+DSH 0.2.1-rc.5+. Plain JavaScript, no build step; the plugin has no runtime dependencies, while Node/npm are required by DSH itself and by market installs.
 
 ## License
 

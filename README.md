@@ -22,8 +22,7 @@ Agent 技能（SKILL.md）现在散落在多处：`~/.agents/skills/`、`~/.clau
 
 | 能力 | 说明 |
 |---|---|
-| 目录发现 | 自动探测 agents.md 标准（`~/.agents/skills`、项目级）与 Claude/Codex/Cursor 等约定目录，支持自定义根目录；探测不到的显示"未找到"而非报错 |
-| 无损盘点 | 首次运行扫描全部目录建档，无法判定来源的一律标记 `foreign`，一条不丢、不改 |
+| 无损盘点 | 自动探测 agents.md 标准（`~/.agents/skills`、项目级）与 Claude/Codex/Cursor 等约定目录；首次运行扫描建档，无法判定来源的一律标记 `foreign`，一条不丢、不改 |
 | 列表管理 | 名称/来源/作用域/归属 agent/加载状态/置顶；组合过滤；全局启停对所有会话立即生效，项目启停只影响所属项目；均不移动技能文件，无需重启。加载状态按技能文件存在与启停状态判断，不随当前会话切换 |
 | 清单同步 | 默认展示远端清单与操作，配置进入独立设置页；推送按名称做远端优先的增量合并，只新增缺失项、不覆盖同名来源；拉取只安装本地缺失项，已存在项明确跳过；无效远端清单拒绝覆盖 |
 | 详情抽屉 | SKILL.md 预览（懒加载）、frontmatter 解析、健康报告、可用备份与一键回滚 |
@@ -52,6 +51,13 @@ dsh plugin --profile desktop add ./dsh-skills-butler
 
 或 DSH 插件页「添加插件」粘贴地址。安装后打开 **设置 → 技能**。
 
+## 前提条件
+
+- 已安装 DSH（DeepSeek Harness）桌面端或 Web 端；
+- 本机已安装 Node.js ≥ 22.13，且 `npm` / `npx` 可用；
+- 市场搜索、安装与升级依赖 `npx skills`，git 来源技能依赖 `git`；
+- 缺少 Node/npm 时本地盘点、启停、软链、体检仍可用，市场安装会明确提示降级。
+
 ## 架构
 
 ```
@@ -74,12 +80,6 @@ dsh-skills-butler/
 
 数据流：浏览器面板 → 同源 `/dsh-skills/api/*`（DSH Connection 认证）→ SkillsManager → core（文件系统）→ `~/.dsh/dsh-skills/state.json`。
 
-调研结论（开发前验证，2026-11-05，DSH 0.2.1-rc.5）：
-
-- `npx skills` 支持 `add/remove/list/find/update/init/sync`；**没有 `check` 命令**，更新检查由 git 来源比对 remote 实现；
-- 参考插件 [dsh-mcp-tools](https://github.com/hxlog/dsh-mcp-tools) 验证了 `webServer.register` 路由 + connection 信任门 + store 原子写模式，本插件沿用；
-- DSH Host API 清单：`webServer.register`、`connection.requestRejection`、live Agent 的 `ctx.skills.register`（单项启停，注册/释放即时失效缓存）、`agents.list`、`agent/created`/`agent/disposed`、`ctx.effect`/`ctx.inject`、`settings.section` slot。启停实际变化时额外发送当前 preset 的 `agent-preset/selected` 兼容信号，只让内置会话框清除技能目录缓存，不写会话事件、不切换 preset。加载状态直接来自文件盘点与启停状态，不依赖会话目录。
-
 ## 配置
 
 | 配置项 | 默认值 | 说明 |
@@ -97,11 +97,9 @@ npm test            # core 层测试（不需要 DSH）
 node scripts/host-smoke.mjs   # DSH 适配层冒烟（沙箱 DSH_HOME）
 ```
 
-里程碑：M1 core+盘点 → M2 面板 → M3 操作 → M4 体检/备份/CLI → M5 打磨。
-
 ## 兼容
 
-DSH 0.2.1-rc.5+（Node ≥ 22.13）。纯 JavaScript，无构建步骤。
+DSH 0.2.1-rc.5+。纯 JavaScript，无构建步骤；插件自身无运行时依赖，Node/npm 仅用于 DSH 与市场安装能力。
 
 ## 许可证
 
