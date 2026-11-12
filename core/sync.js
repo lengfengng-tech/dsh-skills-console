@@ -241,7 +241,7 @@ export async function pushManifest({ cacheRoot, remote, credential, records }) {
   await fs.promises.writeFile(file, text, 'utf8')
   const add = await run('git', ['-C', dir, 'add', MANIFEST_FILE], { env })
   if (!add.ok) throw new SyncError('stage-failed', redact(add.stderr, secrets))
-  const commit = await run('git', ['-C', dir, 'commit', '-m', `Add ${merged.added.length} skills incrementally`], { env })
+  const commit = await run('git', ['-C', dir, '-c', 'user.name=DSH Skills Console', '-c', 'user.email=skills-console@localhost', 'commit', '-m', `Add ${merged.added.length} skills incrementally`], { env })
   if (!commit.ok) throw new SyncError('commit-failed', redact(commit.stderr || commit.stdout, secrets))
   const pushed = await run('git', ['-C', dir, ...args, 'push'], { env, timeout: 120000 })
   if (!pushed.ok) throw new SyncError('push-failed', redact(pushed.stderr || pushed.stdout, secrets))
