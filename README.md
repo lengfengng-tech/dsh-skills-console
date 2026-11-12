@@ -3,6 +3,7 @@
 [中文](README.zh.md) | English
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![npm version](https://img.shields.io/npm/v/dsh-skills-console?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-skills-console)
 [![](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 **A skill console inside DeepSeek Harness settings**: discover, install, manage, and health-check the agent skills on this machine. Built on the [`npx skills`](https://skills.sh) CLI and market ecosystem — no self-hosted marketplace.

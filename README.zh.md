@@ -3,6 +3,7 @@
 [English](README.md) | 中文
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+[![npm version](https://img.shields.io/npm/v/dsh-skills-console?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-skills-console)
 [![](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 **DeepSeek Harness 设置页里的技能控制台**：发现、安装、管理、体检本机的 Agent 技能。复用 [`npx skills`](https://skills.sh) CLI 与市场生态，不自建市场。
