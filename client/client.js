@@ -221,11 +221,6 @@ window.__ModuleLoader__.load({
     "panel.title": "技能",
     "refresh.failure": "刷新失败：{message}",
     "refresh.success": "刷新成功：扫描 {scanned} 条记录，DSH 可管理 {count} 个技能",
-    "roots.custom": "自定义",
-    "roots.empty": "未探测到目录",
-    "roots.missing": "未找到",
-    "roots.readonly": "只读",
-    "roots.title": "技能目录",
     "scope.global": "全局",
     "scope.project": "项目",
     "search.placeholder": "搜索技能",
@@ -413,11 +408,6 @@ window.__ModuleLoader__.load({
     "panel.title": "Skills",
     "refresh.failure": "Refresh failed: {message}",
     "refresh.success": "Refreshed: {scanned} records, {count} DSH skills",
-    "roots.custom": "custom",
-    "roots.empty": "No directories discovered",
-    "roots.missing": "not found",
-    "roots.readonly": "read-only",
-    "roots.title": "Skill roots",
     "scope.global": "Global",
     "scope.project": "Project",
     "search.placeholder": "Search skills",
@@ -605,11 +595,6 @@ window.__ModuleLoader__.load({
     "panel.title": "スキル",
     "refresh.failure": "更新に失敗しました: {message}",
     "refresh.success": "更新完了: {scanned} 件をスキャン、DSH スキル {count} 件",
-    "roots.custom": "カスタム",
-    "roots.empty": "ディレクトリが見つかりません",
-    "roots.missing": "見つかりません",
-    "roots.readonly": "読み取り専用",
-    "roots.title": "スキルルート",
     "scope.global": "グローバル",
     "scope.project": "プロジェクト",
     "search.placeholder": "スキルを検索",
@@ -797,11 +782,6 @@ window.__ModuleLoader__.load({
     "panel.title": "Habilidades",
     "refresh.failure": "Error al actualizar: {message}",
     "refresh.success": "Actualizado: {scanned} registros, {count} habilidades de DSH",
-    "roots.custom": "Personalizada",
-    "roots.empty": "No se encontraron directorios",
-    "roots.missing": "No encontrado",
-    "roots.readonly": "Solo lectura",
-    "roots.title": "Directorios raíz de habilidades",
     "scope.global": "Global",
     "scope.project": "Proyecto",
     "search.placeholder": "Buscar habilidades",
@@ -989,11 +969,6 @@ window.__ModuleLoader__.load({
     "panel.title": "Compétences",
     "refresh.failure": "Échec de l’actualisation : {message}",
     "refresh.success": "Actualisation réussie : {scanned} enregistrements analysés, {count} compétences DSH",
-    "roots.custom": "personnalisé",
-    "roots.empty": "Aucun répertoire détecté",
-    "roots.missing": "introuvable",
-    "roots.readonly": "lecture seule",
-    "roots.title": "Répertoires racines des compétences",
     "scope.global": "Global",
     "scope.project": "Projet",
     "search.placeholder": "Rechercher des compétences",
@@ -1181,11 +1156,6 @@ window.__ModuleLoader__.load({
     "panel.title": "Skills",
     "refresh.failure": "Aktualisierung fehlgeschlagen: {message}",
     "refresh.success": "Aktualisierung erfolgreich: {scanned} Einträge geprüft, {count} DSH-Skills",
-    "roots.custom": "benutzerdefiniert",
-    "roots.empty": "Keine Verzeichnisse gefunden",
-    "roots.missing": "nicht gefunden",
-    "roots.readonly": "schreibgeschützt",
-    "roots.title": "Skill-Stammverzeichnisse",
     "scope.global": "Global",
     "scope.project": "Projekt",
     "search.placeholder": "Skills suchen",
@@ -1373,11 +1343,6 @@ window.__ModuleLoader__.load({
     "panel.title": "Навыки",
     "refresh.failure": "Не удалось обновить: {message}",
     "refresh.success": "Обновлено. Записей: {scanned}; навыков DSH: {count}.",
-    "roots.custom": "пользовательский",
-    "roots.empty": "Каталоги не найдены",
-    "roots.missing": "не найден",
-    "roots.readonly": "только чтение",
-    "roots.title": "Корневые каталоги навыков",
     "scope.global": "Глобальная",
     "scope.project": "Проектная",
     "search.placeholder": "Поиск навыков",
@@ -1565,11 +1530,6 @@ window.__ModuleLoader__.load({
     "panel.title": "Habilidades",
     "refresh.failure": "Falha ao atualizar: {message}",
     "refresh.success": "Atualizado. Registros: {scanned}; habilidades do DSH: {count}.",
-    "roots.custom": "personalizado",
-    "roots.empty": "Nenhum diretório encontrado",
-    "roots.missing": "não encontrado",
-    "roots.readonly": "somente leitura",
-    "roots.title": "Diretórios raiz das habilidades",
     "scope.global": "Global",
     "scope.project": "Projeto",
     "search.placeholder": "Buscar habilidades",
@@ -1858,7 +1818,7 @@ window.__ModuleLoader__.load({
       modal: null, confirmSkill: null,
       market: { query: '', rows: [], searched: false, installing: null },
       localForm: { target: '', name: '' },
-      health: null, logs: null, rootsSnapshot: null,
+      health: null, logs: null,
       sync: { repo: '', result: null, manifest: null, busy: false }
     }
     var rootEl = null
@@ -2400,28 +2360,6 @@ window.__ModuleLoader__.load({
             })) : null)
         return modalShell(sync.screen === 'settings' ? t('b.sync.settings') : t('sync.title'), body)
       }
-      if (S.modal === 'roots') {
-        var roots = S.rootsSnapshot || (S.view && S.view.roots) || []
-        return modalShell(t('roots.title'), el('div', null,
-          el('div', { style: { display: 'flex', gap: '8px' } },
-            el('button', { class: 'skb-btn', type: 'button', text: t('action.health'), onclick: function () {
-              setState({ modal: 'health', health: null })
-              api('/health').then(function (d) { setState({ health: d.report }) }).catch(function (e) { setState({ health: { error: e.message } }) })
-            } }),
-            el('button', { class: 'skb-btn', type: 'button', text: t('action.logs'), onclick: function () {
-              setState({ modal: 'logs', logs: null })
-              api('/logs?limit=120').then(function (d) { setState({ logs: d.logs }) }).catch(function () { setState({ logs: [] }) })
-            } })),
-          roots.length === 0 ? el('div', { class: 'skb-empty', text: t('roots.empty') }) : null,
-          roots.map(function (root) {
-            return el('div', { class: 'skb-market-row' },
-              el('div', { class: 'skb-market-main' },
-                el('div', { class: 'skb-market-ref', text: root.agent + ' · ' + t('scope.' + root.scope) + (root.standard ? '' : ' · ' + t('roots.custom')) }),
-                el('div', { class: 'skb-market-meta', text: root.dir })),
-              !root.present ? el('span', { class: 'skb-badge', text: t('roots.missing') }) :
-                !root.writable ? el('span', { class: 'skb-badge skb-badge--warn', text: t('roots.readonly') }) : null)
-          })))
-      }
       if (S.modal === 'logs') {
         var logs = S.logs || []
         return modalShell(t('logs.title'), el('div', null,
@@ -2486,10 +2424,6 @@ window.__ModuleLoader__.load({
           el('p', { class: 'skb-subtitle', text: t('panel.subtitle') })),
         el('div', { class: 'skb-actions' },
           el('button', { class: 'skb-btn', type: 'button', text: S.busy ? t('b.refreshing') : t('action.refresh'), disabled: !!S.busy, onclick: refreshAll }),
-          el('button', { class: 'skb-btn', type: 'button', text: t('action.roots'), onclick: function () {
-            setState({ modal: 'roots', rootsSnapshot: null })
-            load().then(function (d) { if (d) setState({ rootsSnapshot: d.roots }) })
-          } }),
                       el('button', { class: 'skb-btn', type: 'button', text: t('action.sync'), onclick: function () { setState({ modal: 'sync', sync: { repo: '', result: null, manifest: null, busy: false, remotes: [], remotesLoaded: false, selected: [], testResults: {}, pushResults: [], pullResults: [], screen: 'list', form: null, editingId: null, error: null, notice: null } }) } }),
           el('div', { class: 'skb-relative' },
             el('button', { class: 'skb-btn skb-btn--primary', type: 'button', text: t('action.add') + ' ▾', onclick: function (e) {
