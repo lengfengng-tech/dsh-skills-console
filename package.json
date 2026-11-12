@@ -1,6 +1,6 @@
 {
   "name": "dsh-skills-console",
-  "version": "0.1.4",
+  "version": "0.1.1",
   "description": "Skill console for DeepSeek Harness settings: discover, install, manage, and health-check agent skills across ~/.agents/skills, ~/.claude/skills, and project scopes — built on the npx skills ecosystem",
   "type": "module",
   "license": "MIT",
