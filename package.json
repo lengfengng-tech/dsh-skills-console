@@ -37,7 +37,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "test": "node scripts/core-test.mjs"
+    "test": "node scripts/core-test.mjs && node scripts/i18n-test.mjs"
   },
   "dsh": {
     "bundle": {

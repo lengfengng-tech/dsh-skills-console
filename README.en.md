@@ -29,6 +29,7 @@ This plugin adds the human-facing layer: visible, manageable, recoverable.
 - **Symlinks** — add/detach/materialize; targets must contain SKILL.md; `..`/root/missing rejected; Windows degrades to junction/copy with an explicit note.
 - **Health check** — frontmatter validity, missing SKILL.md, empty dirs and dead symlinks are graded; duplicate names and project shadowing are informational, not warnings. Every fix is previewed before applying.
 - **Update & backup** — pre-update backups to `~/.dsh/dsh-skills/backups/<name>@<ts>/`; retention 10 per skill / 30 days (configurable); rollback supported.
+- **Eight-language UI** — follows the DSH language setting: Chinese, English, Japanese, Spanish, French, German, Russian, and Portuguese; regional locale normalization and live switching without reopening the panel.
 - **Operation log** — `logs.jsonl` for every op, viewable in the panel, with undo for the latest reversible step.
 - **Graceful CLI degradation** — without node/npx the panel says so; local management keeps working.
 

@@ -31,6 +31,7 @@ Agent 技能（SKILL.md）现在散落在多处：`~/.agents/skills/`、`~/.clau
 | 软链管理 | 添加/断开/转正（materialize）软链；目标必须含 SKILL.md，拒绝 `..`/根目录/不存在目标；Windows 无权限时降级 junction/拷贝并明确提示 |
 | 一键体检 | frontmatter 合法性、SKILL.md 缺失、空目录、失效软链分级报告；重名和项目覆盖仅作提示，不计警告；修复一律先预览 diff 再确认 |
 | 更新与备份 | 更新前自动备份到 `~/.dsh/dsh-skills/backups/<name>@<ts>/`，保留策略默认每技能 10 份/30 天，可回滚 |
+| 多语言界面 | 跟随 DSH 语言设置，支持中文、English、日本語、Español、Français、Deutsch、Русский、Português；区域代码自动归一化，动态切换无需重开面板 |
 | 操作日志 | `logs.jsonl` 记录全部操作，面板可查，支持撤销最近一步（软移除/恢复/链接类） |
 | CLI 降级 | node/npx 不可用时面板明确降级：市场安装/更新不可用，本地管理照常 |
 

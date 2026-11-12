@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Skills Butler",
+    "description": "Entdecken, installieren, verwalten und prüfen Sie Agent-Skills in den DSH-Einstellungen – für ~/.agents/skills, ~/.claude/skills und Projekte, auf Basis des npx-skills-Ökosystems."
+  }
+}

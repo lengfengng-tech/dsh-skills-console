@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Skills Butler",
+    "description": "Поиск, установка, управление и диагностика навыков Agent в настройках DSH: ~/.agents/skills, ~/.claude/skills и проектные области, на основе экосистемы npx skills."
+  }
+}
