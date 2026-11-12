@@ -1,7 +1,7 @@
 {
-  "name": "dsh-skills-butler",
+  "name": "dsh-skills-console",
   "version": "0.1.0",
-  "description": "Skill butler for DeepSeek Harness settings: discover, install, manage, and health-check agent skills across ~/.agents/skills, ~/.claude/skills, and project scopes — built on the npx skills ecosystem",
+  "description": "Skill console for DeepSeek Harness settings: discover, install, manage, and health-check agent skills across ~/.agents/skills, ~/.claude/skills, and project scopes — built on the npx skills ecosystem",
   "type": "module",
   "license": "MIT",
   "main": "./dsh/index.js",
@@ -51,5 +51,13 @@
         "@deepseek-ai/dsh-client-ui-settings"
       ]
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lengfengng-tech/dsh-skills-console.git"
+  },
+  "homepage": "https://github.com/lengfengng-tech/dsh-skills-console#readme",
+  "bugs": {
+    "url": "https://github.com/lengfengng-tech/dsh-skills-console/issues"
   }
 }

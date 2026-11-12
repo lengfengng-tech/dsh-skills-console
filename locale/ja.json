@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Skills Butler",
+    "title": "Skills Console",
     "description": "DSH 設定で Agent スキルを発見、インストール、管理、診断します。~/.agents/skills、~/.claude/skills、プロジェクトのスコープに対応し、npx skills エコシステムを基盤としています。"
   }
 }

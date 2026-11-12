@@ -1,10 +1,10 @@
-// dsh/index.js — cordis host entry for dsh-skills-butler.
+// dsh/index.js — cordis host entry for dsh-skills-console.
 // Wires the SkillsManager into DSH: first census on boot, routes behind the
 // connection trust gate, cleanup on unload.
 import { SkillsManager } from './manager.js'
 import { registerRoutes } from './routes.js'
 
-export const name = 'skills-butler'
+export const name = 'skills-console'
 export const inject = ['skills', 'agents', 'sessions', 'workspaceRegistry', 'sessionSkillCatalog', 'sessionPersistence']
 
 export function apply(ctx, config = {}) {
@@ -23,13 +23,13 @@ export function apply(ctx, config = {}) {
 
   ctx.effect(() => () => {
     manager.dispose()
-  }, 'skills-butler: dispose')
+  }, 'skills-console: dispose')
 
   ctx.inject(['webServer'], (webCtx) => {
     ctx.inject(['connection'], (connCtx) => {
       try {
         const disposeRoutes = registerRoutes(webCtx.webServer, connCtx.connection, manager)
-        ctx.effect(() => disposeRoutes, 'skills-butler: routes')
+        ctx.effect(() => disposeRoutes, 'skills-console: routes')
       } catch (error) {
         ctx.logger && ctx.logger.warn && ctx.logger.warn('[dsh-skills] 管理接口注册失败: ' + String((error && error.message) || error))
       }

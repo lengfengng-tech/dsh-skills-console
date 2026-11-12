@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "技能管家",
+    "title": "技能控制台",
     "description": "在 DSH 设置中发现、安装、管理并体检 Agent 技能，覆盖 ~/.agents/skills、~/.claude/skills 与项目级目录，基于 npx skills 生态。"
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Browser half of dsh-skills-butler — VANILLA DOM EDITION.
+ * Browser half of dsh-skills-console — VANILLA DOM EDITION.
  *
  * Lesson learned the hard way: every React tree in this page (the settings
  * slot tree, and even our own createRoot) had its DOM yanked by the shell's
@@ -13,14 +13,14 @@
  *     settings content column every 500ms while settings is open.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-skills-butler',
+  id: 'dsh-skills-console',
   factory: (require) => {
     'use strict'
     var module = { exports: {} }
     var exports = module.exports
 
-    var NS = 'skillsButler'
-    var SECTION_ID = 'skills-butler'
+    var NS = 'skillsConsole'
+    var SECTION_ID = 'skills-console'
     var API = '/dsh-skills/api'
     var DIAG_KEY = 'skb.diag.v1'
 
@@ -54,7 +54,7 @@ window.__ModuleLoader__.load({
       console.log = function () {
         try {
           var text = Array.prototype.map.call(arguments, function (a) { return (a && a.message) || String(a) }).join(' ')
-          if (text.indexOf('[skills-butler]') >= 0) diag('console-log', text.slice(0, 300))
+          if (text.indexOf('[skills-console]') >= 0) diag('console-message', text.slice(0, 300))
         } catch (e) { /* noop */ }
         origLog.apply(null, arguments)
       }
@@ -1774,10 +1774,10 @@ window.__ModuleLoader__.load({
       if (stylesInjected) return
       try {
         if (typeof document === 'undefined' || !document.head) return
-        if (document.querySelector('style[data-plugin-css="dsh-skills-butler/panel.css"]')) { stylesInjected = true; return }
+        if (document.querySelector('style[data-plugin-css="dsh-skills-console/panel.css"]')) { stylesInjected = true; return }
         var tag = document.createElement('style')
-        tag.dataset.plugin = 'dsh-skills-butler'
-        tag.dataset.pluginCss = 'dsh-skills-butler/panel.css'
+        tag.dataset.plugin = 'dsh-skills-console'
+        tag.dataset.pluginCss = 'dsh-skills-console/panel.css'
         tag.textContent = CSS
         document.head.appendChild(tag)
         stylesInjected = true
@@ -2605,7 +2605,7 @@ window.__ModuleLoader__.load({
             window.removeEventListener('resize', align)
             if (selfHost) { try { selfHost.remove() } catch (e) { /* noop */ } selfHost = null }
           }
-        }, 'skills-butler: panel lifecycle')
+        }, 'skills-console: panel lifecycle')
       }
       var slots = ctx && ctx.slots
       diag('apply', 'slots=' + typeof (slots && slots.inject))

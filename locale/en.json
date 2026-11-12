@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Skills Butler",
+    "title": "Skills Console",
     "description": "Discover, install, manage, and health-check agent skills across ~/.agents/skills, ~/.claude/skills, and project scopes — built on the npx skills ecosystem."
   }
 }

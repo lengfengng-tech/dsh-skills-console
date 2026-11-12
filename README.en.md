@@ -1,11 +1,11 @@
-# dsh-skills-butler
+# dsh-skills-console
 
 [中文](README.md) | English
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 [![](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
-**A skill butler inside DeepSeek Harness settings**: discover, install, manage, and health-check the agent skills on this machine. Built on the [`npx skills`](https://skills.sh) CLI and market ecosystem — no self-hosted marketplace.
+**A skill console inside DeepSeek Harness settings**: discover, install, manage, and health-check the agent skills on this machine. Built on the [`npx skills`](https://skills.sh) CLI and market ecosystem — no self-hosted marketplace.
 
 ## Why
 
@@ -37,11 +37,11 @@ Shared-directory discipline: real removal of `installedBy=foreign` skills shows 
 ## Install
 
 ```sh
-dsh plugin --profile desktop add dsh-skills-butler
+dsh plugin --profile desktop add dsh-skills-console
 # or
-dsh plugin --profile desktop add github:lengfengng-tech/dsh-skills-butler
+dsh plugin --profile desktop add github:lengfengng-tech/dsh-skills-console
 # or local
-dsh plugin --profile desktop add ./dsh-skills-butler
+dsh plugin --profile desktop add ./dsh-skills-console
 ```
 
 Then open **Settings → Skills**.
@@ -56,7 +56,7 @@ Then open **Settings → Skills**.
 ## Architecture
 
 ```
-dsh-skills-butler/
+dsh-skills-console/
 ├── core/                    # zero DSH deps, independently testable (npm test)
 │   ├── paths.js             #   root discovery (agents.md + agent conventions + custom)
 │   ├── inventory.js         #   census/reconcile (identity=name+liveRoot)

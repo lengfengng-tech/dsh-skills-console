@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Skills Butler",
+    "title": "Skills Console",
     "description": "Descubre, instala, gestiona y revisa skills de Agent en la configuración de DSH, incluidos ~/.agents/skills, ~/.claude/skills y los proyectos, sobre el ecosistema de npx skills."
   }
 }

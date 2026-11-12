@@ -380,8 +380,8 @@ export class SkillsManager {
       if (entry.disposers.has(name)) continue
       const dispose = entry.registry.register({
         name,
-        description: 'Disabled in DeepSeek Harness by Skills Butler',
-        content: 'This skill is disabled in DeepSeek Harness by Skills Butler.',
+        description: 'Disabled in DeepSeek Harness by Skills Console',
+        content: 'This skill is disabled in DeepSeek Harness by Skills Console.',
         source: 'runtime',
         invocation: { modelInvocable: false, userInvocable: false }
       })

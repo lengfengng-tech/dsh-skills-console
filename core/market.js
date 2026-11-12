@@ -19,7 +19,7 @@ function exec(cmd, args, { timeout = 60000 } = {}) {
 
 async function githubJson(url) {
   const response = await fetch(url, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'dsh-skills-butler' },
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'dsh-skills-console' },
     signal: AbortSignal.timeout(15000)
   })
   if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`)

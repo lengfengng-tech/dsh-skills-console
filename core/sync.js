@@ -145,7 +145,7 @@ function sourceUrl(ref) {
 }
 
 /** Build a downloadable manifest. Local-only/external links are excluded. */
-export function manifestFromRecords(records, { source = 'dsh-skills-butler' } = {}) {
+export function manifestFromRecords(records, { source = 'dsh-skills-console' } = {}) {
   const byName = new Map()
   for (const record of records || []) {
     const ref = typeof record.sourceRef === 'string' ? record.sourceRef : ''

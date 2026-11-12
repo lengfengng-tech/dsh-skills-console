@@ -1,11 +1,11 @@
-# dsh-skills-butler（技能管家）
+# dsh-skills-console（技能控制台）
 
 [English](README.en.md) | 中文
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 [![](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
-**DeepSeek Harness 设置页里的技能管家**：发现、安装、管理、体检本机的 Agent 技能。复用 [`npx skills`](https://skills.sh) CLI 与市场生态，不自建市场。
+**DeepSeek Harness 设置页里的技能控制台**：发现、安装、管理、体检本机的 Agent 技能。复用 [`npx skills`](https://skills.sh) CLI 与市场生态，不自建市场。
 
 ## 为什么做这个插件
 
@@ -40,13 +40,13 @@ Agent 技能（SKILL.md）现在散落在多处：`~/.agents/skills/`、`~/.clau
 
 ```sh
 # 从 npm（发布后）
-dsh plugin --profile desktop add dsh-skills-butler
+dsh plugin --profile desktop add dsh-skills-console
 
 # 从 GitHub
-dsh plugin --profile desktop add github:lengfengng-tech/dsh-skills-butler
+dsh plugin --profile desktop add github:lengfengng-tech/dsh-skills-console
 
 # 本地目录
-dsh plugin --profile desktop add ./dsh-skills-butler
+dsh plugin --profile desktop add ./dsh-skills-console
 ```
 
 或 DSH 插件页「添加插件」粘贴地址。安装后打开 **设置 → 技能**。
@@ -61,7 +61,7 @@ dsh plugin --profile desktop add ./dsh-skills-butler
 ## 架构
 
 ```
-dsh-skills-butler/
+dsh-skills-console/
 ├── core/                    # 零 DSH 依赖，可独立 npm test
 │   ├── paths.js             #   目录发现（agents.md 标准 + 各 agent 约定 + 自定义）
 │   ├── inventory.js         #   盘点/对账（身份=name+liveRoot，启停不丢不重）
